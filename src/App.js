@@ -6,7 +6,8 @@ import { SubscriptionProvider } from './contexts/SubscriptionContext';
 
 // Pages principales
 import LandingPage from './pages/LandingPage';
-import Home from './pages/Home';
+import ServicesListPage from './pages/ServicesListPage';
+import ServiceDetailsPage from './pages/ServiceDetailsPage';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
@@ -14,6 +15,13 @@ import AdminPanel from './pages/AdminPanel';
 import Checkout from './pages/Checkout';
 import SuccessPage from './pages/SuccessPage';
 import SubscriptionDetails from './pages/SubscriptionDetails';
+
+// Pages Admin
+import AdminMainServices from './components/admin/AdminMainServices';
+import AdminServiceForm from './components/admin/AdminServiceForm';
+import AdminServiceSubscriptions from './components/admin/AdminServiceSubscriptions';
+import SubscriptionForm from './components/admin/SubscriptionForm';
+import AdminUsers from './components/admin/AdminUsers';
 
 // Composants
 import Navbar from './components/Navbar';
@@ -47,8 +55,10 @@ const AppWithNavbar = () => {
       <Navbar />
       <div className="min-h-screen">
         <Routes>
-          <Route path="/services" element={<Home />} />
-          <Route path="/checkout/:subscriptionId" element={
+          {/* Routes utilisateur */}
+          <Route path="/services" element={<ServicesListPage />} />
+          <Route path="/service/:serviceId" element={<ServiceDetailsPage />} />
+          <Route path="/checkout/:serviceId/:subscriptionId" element={
             <PrivateRoute>
               <Checkout />
             </PrivateRoute>
@@ -58,7 +68,7 @@ const AppWithNavbar = () => {
               <SuccessPage />
             </PrivateRoute>
           } />
-          <Route path="/subscription/:id" element={
+          <Route path="/subscription/:subscriptionId" element={
             <PrivateRoute>
               <SubscriptionDetails />
             </PrivateRoute>
@@ -68,11 +78,23 @@ const AppWithNavbar = () => {
               <Dashboard />
             </PrivateRoute>
           } />
-          <Route path="/admin/*" element={
+          
+          {/* Routes Admin */}
+          <Route path="/admin" element={
             <AdminRoute>
               <AdminPanel />
             </AdminRoute>
-          } />
+          }>
+            <Route index element={<Navigate to="/admin/services" replace />} />
+            <Route path="services" element={<AdminMainServices />} />
+            <Route path="services/new" element={<AdminServiceForm />} />
+            <Route path="services/edit/:id" element={<AdminServiceForm />} />
+            <Route path="services/:serviceId/subscriptions" element={<AdminServiceSubscriptions />} />
+            <Route path="services/:serviceId/subscriptions/new" element={<SubscriptionForm />} />
+            <Route path="services/:serviceId/subscriptions/edit/:subscriptionId" element={<SubscriptionForm />} />
+            <Route path="users" element={<AdminUsers />} />
+          </Route>
+          
           {/* Redirection par défaut */}
           <Route path="*" element={<Navigate to="/services" replace />} />
         </Routes>

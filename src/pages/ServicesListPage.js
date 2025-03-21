@@ -1,28 +1,24 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useSubscriptions } from '../contexts/SubscriptionContext';
 import { useAuth } from '../contexts/AuthContext';
 
-const Home = () => {
-  const { services, loading } = useSubscriptions();
+const ServicesListPage = () => {
+  const { mainServices, loading } = useSubscriptions();
   const { currentUser } = useAuth();
-  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Tous');
   
-  // Catégories des services
-  const categories = [
-    'Tous',
-    'Streaming',
-    'Musique',
-    'Productivité',
-    'Sécurité',
-    'Cloud',
-    'Éducation'
-  ];
+  // Extraire toutes les catégories uniques des services
+  const allCategories = ['Tous'];
+  mainServices.forEach(service => {
+    if (service.category && !allCategories.includes(service.category)) {
+      allCategories.push(service.category);
+    }
+  });
 
   // Filtrer les services en fonction du terme de recherche et de la catégorie
-  const filteredServices = services.filter(service => {
+  const filteredServices = mainServices.filter(service => {
     const matchesSearch = service.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                          service.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === 'Tous' || service.category === selectedCategory;
@@ -38,14 +34,6 @@ const Home = () => {
     }
     servicesByCategory[category].push(service);
   });
-
-  const handleSubscription = (service) => {
-    if (!currentUser) {
-      navigate('/login', { state: { redirect: `/checkout/${service.id}` } });
-      return;
-    }
-    navigate(`/checkout/${service.id}`);
-  };
 
   if (loading) {
     return (
@@ -93,7 +81,7 @@ const Home = () => {
 
         {/* Filtres par catégorie */}
         <div className="flex flex-wrap justify-center gap-2 mb-12">
-          {categories.map(category => (
+          {allCategories.map(category => (
             <button
               key={category}
               className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
@@ -121,14 +109,6 @@ const Home = () => {
             <div key={category} className="mb-12">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-bold">{category}</h2>
-                {servicesByCategory[category].length > 4 && (
-                  <Link to={`/category/${category.toLowerCase()}`} className="text-blue-400 hover:text-blue-300 flex items-center">
-                    Voir tout
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </Link>
-                )}
               </div>
               
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -138,16 +118,13 @@ const Home = () => {
                       <div className="flex justify-between items-start mb-4">
                         <div className="flex items-center">
                           {service.imageUrl ? (
-                            <img src={service.imageUrl} alt={service.name} className="w-12 h-12 rounded-lg mr-4" />
+                            <img src={service.imageUrl} alt={service.name} className="w-12 h-12 rounded-lg mr-4 object-cover" />
                           ) : (
                             <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg mr-4 flex items-center justify-center text-white font-bold text-xl">
                               {service.name.charAt(0)}
                             </div>
                           )}
-                          <div>
-                            <h3 className="text-xl font-bold">{service.name}</h3>
-                            <p className="text-white/70 text-sm">{service.subscribersCount || 0} utilisateurs</p>
-                          </div>
+                          <h3 className="text-xl font-bold">{service.name}</h3>
                         </div>
                       </div>
                       
@@ -155,14 +132,14 @@ const Home = () => {
                       
                       <div className="flex justify-between items-center">
                         <div className="bg-blue-600/20 rounded-full px-4 py-1 text-blue-300 font-semibold">
-                          {service.price.toFixed(2)} €/mois
+                          à partir de {service.defaultPrice?.toFixed(2) || "??.??"} €
                         </div>
-                        <button
-                          onClick={() => handleSubscription(service)}
+                        <Link
+                          to={`/service/${service.id}`}
                           className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors duration-300"
                         >
-                          S'abonner
-                        </button>
+                          Voir les options
+                        </Link>
                       </div>
                     </div>
                   </div>
@@ -176,4 +153,4 @@ const Home = () => {
   );
 };
 
-export default Home;
+export default ServicesListPage;

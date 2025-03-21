@@ -4,50 +4,91 @@ import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { useStripe as useStripeContext } from '../contexts/StripeContext';
 import { useSubscriptions } from '../contexts/SubscriptionContext';
 import { useAuth } from '../contexts/AuthContext';
+import { firestore } from '../firebase';
 
 const Checkout = () => {
-  const { subscriptionId } = useParams();
-  const { services, loading } = useSubscriptions();
-  const { createPaymentIntent, confirmPayment, processing } = useStripeContext();
-  const { currentUser } = useAuth();
+  const { serviceId, subscriptionId } = useParams();
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
+  const { createPaymentIntent, confirmPayment, processing } = useStripeContext();
+  const { purchaseSubscription } = useSubscriptions();
   
   const [service, setService] = useState(null);
+  const [subscription, setSubscription] = useState(null);
   const [error, setError] = useState(null);
   const [clientSecret, setClientSecret] = useState('');
   const [cardComplete, setCardComplete] = useState(false);
+  const [loading, setLoading] = useState(true);
   
   const stripe = useStripe();
   const elements = useElements();
 
   useEffect(() => {
-    if (loading) return;
-    
-    const selectedService = services.find(s => s.id === subscriptionId);
-    if (!selectedService) {
-      setError("Service non trouvé");
-      return;
-    }
-    
-    setService(selectedService);
-    
-    // Créer l'intention de paiement
-    const initPayment = async () => {
+    const fetchData = async () => {
       try {
-        const { clientSecret } = await createPaymentIntent(selectedService.id, selectedService.price);
+        // Récupérer les informations du service
+        const serviceDoc = await firestore.collection('services').doc(serviceId).get();
+        
+        if (!serviceDoc.exists) {
+          setError("Service non trouvé");
+          setLoading(false);
+          return;
+        }
+        
+        const serviceData = {
+          id: serviceDoc.id,
+          ...serviceDoc.data()
+        };
+        
+        setService(serviceData);
+        
+        // Récupérer les informations de l'abonnement
+        const subscriptionDoc = await firestore
+          .collection('services')
+          .doc(serviceId)
+          .collection('subscriptions')
+          .doc(subscriptionId)
+          .get();
+        
+        if (!subscriptionDoc.exists) {
+          setError("Abonnement non trouvé");
+          setLoading(false);
+          return;
+        }
+        
+        const subscriptionData = {
+          id: subscriptionDoc.id,
+          ...subscriptionDoc.data()
+        };
+        
+        // Vérifier si l'abonnement est complet
+        if (subscriptionData.currentUsers >= subscriptionData.maxUsers) {
+          setError("Cet abonnement est complet. Veuillez en choisir un autre.");
+          setLoading(false);
+          return;
+        }
+        
+        setSubscription(subscriptionData);
+        
+        // Créer l'intention de paiement
+        const { clientSecret } = await createPaymentIntent(serviceId, subscriptionData.price);
         setClientSecret(clientSecret);
+        
+        setLoading(false);
       } catch (err) {
-        setError(err.message);
+        console.error("Erreur lors du chargement:", err);
+        setError(`Une erreur est survenue: ${err.message}`);
+        setLoading(false);
       }
     };
     
-    initPayment();
-  }, [subscriptionId, services, loading, createPaymentIntent]);
+    fetchData();
+  }, [serviceId, subscriptionId, createPaymentIntent]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
     
-    if (!stripe || !elements || !cardComplete) {
+    if (!stripe || !elements || !cardComplete || !clientSecret) {
       return;
     }
     
@@ -71,15 +112,21 @@ const Checkout = () => {
       
       if (paymentIntent.status === 'succeeded') {
         try {
-          await confirmPayment(paymentIntent.id, service.id);
+          // Enregistrement de l'abonnement pour l'utilisateur avec la nouvelle structure
+          const result = await purchaseSubscription(serviceId, subscriptionId, paymentIntent.id);
+          
+          // Rediriger vers la page de succès
           navigate('/success', { 
             state: { 
+              userSubscriptionId: result.userSubscriptionId,
               serviceId: service.id,
-              serviceName: service.name
+              serviceName: service.name,
+              subscriptionName: subscription.name,
+              accessType: subscription.accessType
             } 
           });
         } catch (err) {
-          setError(`Erreur de confirmation: ${err.message}`);
+          setError(`Erreur lors de la finalisation: ${err.message}`);
         }
       }
     } catch (err) {
@@ -104,7 +151,7 @@ const Checkout = () => {
     );
   }
   
-  if (error && !service) {
+  if (error && (!service || !subscription)) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-12 px-4">
         <div className="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden">
@@ -125,10 +172,10 @@ const Checkout = () => {
     );
   }
   
-  if (!service) {
+  if (!service || !subscription) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-12 px-4 flex justify-center">
-        <div className="text-center py-10">Service non trouvé</div>
+        <div className="text-center py-10">Service ou abonnement non trouvé</div>
       </div>
     );
   }
@@ -137,7 +184,7 @@ const Checkout = () => {
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-12 px-4">
       <div className="max-w-md mx-auto">
         <div className="mb-6">
-          <Link to="/" className="text-blue-600 hover:text-blue-800 font-medium inline-flex items-center">
+          <Link to={`/service/${serviceId}`} className="text-blue-600 hover:text-blue-800 font-medium inline-flex items-center">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
               <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
             </svg>
@@ -148,7 +195,7 @@ const Checkout = () => {
         <div className="bg-white rounded-xl shadow-lg overflow-hidden">
           <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-8">
             <h1 className="text-2xl font-bold text-white mb-2">Finaliser votre abonnement</h1>
-            <p className="text-white/80">Vous êtes sur le point de vous abonner à {service.name}.</p>
+            <p className="text-white/80">Vous êtes sur le point de vous abonner à {service.name} - {subscription.name}.</p>
           </div>
           
           <div className="p-6">
@@ -165,27 +212,43 @@ const Checkout = () => {
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center">
                     {service.imageUrl ? (
-                      <img src={service.imageUrl} alt={service.name} className="w-12 h-12 rounded mr-4" />
+                      <img src={service.imageUrl} alt={service.name} className="w-12 h-12 rounded mr-4 object-cover" />
                     ) : (
                       <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded flex items-center justify-center text-white font-bold text-xl">
                         {service.name.charAt(0)}
                       </div>
                     )}
                     <div>
-                      <h3 className="font-bold text-gray-800">{service.name}</h3>
-                      <p className="text-sm text-gray-500">Abonnement mensuel</p>
+                      <h3 className="font-bold text-gray-800">{service.name} - {subscription.name}</h3>
+                      <p className="text-sm text-gray-500">
+                        {subscription.accessType === 'account' 
+                          ? 'Accès via identifiants' 
+                          : 'Accès via lien d\'invitation'}
+                      </p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <span className="font-bold text-gray-800">{service.price.toFixed(2)} €</span>
-                    <p className="text-sm text-gray-500">pour {service.duration} jours</p>
+                    <span className="font-bold text-gray-800">{subscription.price.toFixed(2)} €</span>
+                    <p className="text-sm text-gray-500">pour {subscription.duration} jours</p>
+                  </div>
+                </div>
+                
+                <div className="mb-4 bg-blue-50 p-3 rounded-lg">
+                  <div className="flex items-start">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-500 mt-0.5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                    </svg>
+                    <p className="text-sm text-blue-700">
+                      Vous rejoignez un abonnement partagé avec <strong>{subscription.currentUsers}</strong> autres utilisateurs. 
+                      Ce service est limité à <strong>{subscription.maxUsers}</strong> utilisateurs au total.
+                    </p>
                   </div>
                 </div>
                 
                 <div className="border-t border-gray-200 pt-4 mt-4">
                   <div className="flex justify-between items-center font-bold">
                     <span className="text-gray-800">Total à payer:</span>
-                    <span className="text-blue-600 text-xl">{service.price.toFixed(2)} €</span>
+                    <span className="text-blue-600 text-xl">{subscription.price.toFixed(2)} €</span>
                   </div>
                 </div>
               </div>
@@ -236,7 +299,7 @@ const Checkout = () => {
                     Traitement en cours...
                   </>
                 ) : (
-                  `Payer ${service.price.toFixed(2)} €`
+                  `Payer ${subscription.price.toFixed(2)} €`
                 )}
               </button>
             </form>

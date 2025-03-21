@@ -94,7 +94,7 @@ const Dashboard = () => {
                   </svg>
                   <h3 className="text-xl font-medium text-gray-700 mb-2">Aucun abonnement actif</h3>
                   <p className="text-gray-500 mb-6">Vous n'avez pas encore d'abonnements actifs.</p>
-                  <Link to="/" className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors">
+                  <Link to="/services" className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors">
                     Découvrir les services
                   </Link>
                 </div>
@@ -102,8 +102,7 @@ const Dashboard = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {activeSubscriptions.map(subscription => {
                     // Générer entre 1 et 4 avatars aléatoires pour simuler les autres utilisateurs
-                    const userCount = Math.floor(Math.random() * 4) + 1;
-                    const otherUsers = generateRandomAvatars(userCount);
+                    const otherUsers = generateRandomAvatars(Math.floor(Math.random() * 3) + 1);
                     
                     return (
                       <div 
@@ -115,6 +114,8 @@ const Dashboard = () => {
                             <h3 className="text-xl font-bold text-white">{subscription.serviceName}</h3>
                             <span className="bg-green-500 text-white text-xs px-2 py-1 rounded-full">Actif</span>
                           </div>
+                          
+                          <p className="text-white/80 text-sm mt-1">{subscription.subscriptionName}</p>
                           
                           {/* Affichage des utilisateurs partageant cet abonnement */}
                           <div className="mt-4">
@@ -136,35 +137,57 @@ const Dashboard = () => {
                               ))}
                             </div>
                           </div>
-                          
-                          <div className="absolute bottom-2 right-2 text-white/50 text-xs">
-                            {userCount + 1}/{userCount + 2} utilisateurs
-                          </div>
                         </div>
                         
                         <div className="p-6">
                           <div className="space-y-3 mb-4">
-                            <div>
-                              <p className="text-sm text-gray-500">Email d'accès</p>
-                              <p className="font-medium">{subscription.email}</p>
-                            </div>
-                            
-                            <div>
-                              <p className="text-sm text-gray-500">Mot de passe</p>
-                              <p className="font-medium">{subscription.password}</p>
-                            </div>
-                            
-                            {subscription.accessLink && (
+                            {subscription.accessType === 'account' ? (
+                              <>
+                                <div>
+                                  <p className="text-sm text-gray-500">Email d'accès</p>
+                                  <div className="flex items-center justify-between">
+                                    <p className="font-medium">{subscription.email}</p>
+                                    <button 
+                                      onClick={() => {navigator.clipboard.writeText(subscription.email)}}
+                                      className="text-blue-600 hover:text-blue-800 text-xs"
+                                    >
+                                      Copier
+                                    </button>
+                                  </div>
+                                </div>
+                                
+                                <div>
+                                  <p className="text-sm text-gray-500">Mot de passe</p>
+                                  <div className="flex items-center justify-between">
+                                    <p className="font-medium">{subscription.password}</p>
+                                    <button 
+                                      onClick={() => {navigator.clipboard.writeText(subscription.password)}}
+                                      className="text-blue-600 hover:text-blue-800 text-xs"
+                                    >
+                                      Copier
+                                    </button>
+                                  </div>
+                                </div>
+                              </>
+                            ) : (
                               <div>
-                                <p className="text-sm text-gray-500">Lien d'accès</p>
-                                <a 
-                                  href={subscription.accessLink} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  className="text-blue-600 hover:text-blue-800 break-all"
-                                >
-                                  {subscription.accessLink}
-                                </a>
+                                <p className="text-sm text-gray-500">Lien d'invitation</p>
+                                <div className="flex items-center justify-between">
+                                  <a 
+                                    href={subscription.invitationLink} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:text-blue-800 break-all text-sm"
+                                  >
+                                    {subscription.invitationLink}
+                                  </a>
+                                  <button 
+                                    onClick={() => {navigator.clipboard.writeText(subscription.invitationLink)}}
+                                    className="text-blue-600 hover:text-blue-800 text-xs ml-2 whitespace-nowrap"
+                                  >
+                                    Copier
+                                  </button>
+                                </div>
                               </div>
                             )}
                           </div>
@@ -208,33 +231,46 @@ const Dashboard = () => {
                     >
                       <div className="bg-gray-600 p-6">
                         <div className="flex items-center justify-between">
-                          <h3 className="text-xl font-bold text-white">{subscription.serviceName}</h3>
+                          <div>
+                            <h3 className="text-xl font-bold text-white">{subscription.serviceName}</h3>
+                            <p className="text-white/80 text-sm">{subscription.subscriptionName}</p>
+                          </div>
                           <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full">Expiré</span>
                         </div>
                       </div>
                       
                       <div className="p-6">
                         <div className="space-y-3 mb-4">
-                          <div>
-                            <p className="text-sm text-gray-500">Email d'accès</p>
-                            <p className="font-medium">{subscription.email}</p>
-                          </div>
-                          
-                          <div>
-                            <p className="text-sm text-gray-500">Mot de passe</p>
-                            <p className="font-medium">{subscription.password}</p>
-                          </div>
+                          {subscription.accessType === 'account' ? (
+                            <>
+                              <div>
+                                <p className="text-sm text-gray-500">Email d'accès</p>
+                                <p className="font-medium">{subscription.email}</p>
+                              </div>
+                              
+                              <div>
+                                <p className="text-sm text-gray-500">Mot de passe</p>
+                                <p className="font-medium">{subscription.password}</p>
+                              </div>
+                            </>
+                          ) : (
+                            <div>
+                              <p className="text-sm text-gray-500">Lien d'invitation</p>
+                              <p className="text-gray-600 break-all text-sm">{subscription.invitationLink}</p>
+                            </div>
+                          )}
                         </div>
                         
                         <div className="flex items-center justify-between">
                           <div className="text-sm text-red-500">
                             Expiré le {new Date(subscription.expiryDate.toDate()).toLocaleDateString()}
                           </div>
-                          <button
+                          <Link
+                            to={`/service/${subscription.serviceId}`}
                             className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-3 py-1 rounded-lg transition-colors"
                           >
                             Renouveler
-                          </button>
+                          </Link>
                         </div>
                       </div>
                     </div>

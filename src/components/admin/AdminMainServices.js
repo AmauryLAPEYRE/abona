@@ -1,43 +1,102 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { useSubscriptions } from '../../contexts/SubscriptionContext';
+import { firestore } from '../../firebase';
 
-const AdminServices = () => {
-  const { services, loading, deleteService } = useSubscriptions();
-  const [deleteLoading, setDeleteLoading] = useState(false);
+const AdminMainServices = () => {
+  const [services, setServices] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [successMessage, setSuccessMessage] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  
+
   // Filtrer les services en fonction du terme de recherche
   const filteredServices = services.filter(service => 
     service.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     service.description.toLowerCase().includes(searchTerm.toLowerCase())
   );
-  
-  const handleDelete = async (serviceId, serviceName) => {
-    if (!window.confirm(`Êtes-vous sûr de vouloir supprimer le service "${serviceName}" ?`)) {
+
+  useEffect(() => {
+    const fetchServices = async () => {
+      try {
+        const servicesSnapshot = await firestore.collection('services').get();
+        
+        const servicesData = await Promise.all(servicesSnapshot.docs.map(async (doc) => {
+          const service = {
+            id: doc.id,
+            ...doc.data()
+          };
+          
+          // Récupérer le nombre d'abonnements pour ce service
+          const subscriptionsSnapshot = await firestore
+            .collection('services')
+            .doc(doc.id)
+            .collection('subscriptions')
+            .get();
+          
+          service.subscriptionCount = subscriptionsSnapshot.size;
+          
+          // Calculer le nombre total d'utilisateurs pour ce service
+          let totalUsers = 0;
+          subscriptionsSnapshot.docs.forEach(subDoc => {
+            const subData = subDoc.data();
+            totalUsers += (subData.currentUsers || 0);
+          });
+          
+          service.totalUsers = totalUsers;
+          
+          return service;
+        }));
+        
+        setServices(servicesData);
+        setLoading(false);
+      } catch (err) {
+        console.error("Erreur lors du chargement des services:", err);
+        setError("Erreur lors du chargement des services");
+        setLoading(false);
+      }
+    };
+    
+    fetchServices();
+  }, []);
+
+  const handleDelete = async (serviceId) => {
+    if (!window.confirm("Êtes-vous sûr de vouloir supprimer ce service ? Tous les abonnements associés seront également supprimés.")) {
       return;
     }
     
     try {
-      setDeleteLoading(true);
-      await deleteService(serviceId);
-      setError(null);
-      setSuccessMessage(`Le service "${serviceName}" a été supprimé avec succès.`);
+      setLoading(true);
       
-      // Effacer le message de succès après 3 secondes
-      setTimeout(() => {
-        setSuccessMessage(null);
-      }, 3000);
+      // Récupérer tous les abonnements de ce service
+      const subscriptionsSnapshot = await firestore
+        .collection('services')
+        .doc(serviceId)
+        .collection('subscriptions')
+        .get();
+      
+      // Supprimer tous les abonnements
+      const batch = firestore.batch();
+      
+      subscriptionsSnapshot.docs.forEach(doc => {
+        batch.delete(doc.ref);
+      });
+      
+      // Supprimer le service principal
+      batch.delete(firestore.collection('services').doc(serviceId));
+      
+      // Exécuter le batch
+      await batch.commit();
+      
+      // Mettre à jour la liste locale
+      setServices(services.filter(s => s.id !== serviceId));
+      setLoading(false);
     } catch (err) {
-      setError(`Erreur lors de la suppression: ${err.message}`);
-    } finally {
-      setDeleteLoading(false);
+      console.error("Erreur lors de la suppression:", err);
+      setError("Erreur lors de la suppression du service");
+      setLoading(false);
     }
   };
 
-  if (loading) {
+  if (loading && services.length === 0) {
     return (
       <div className="flex justify-center items-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
@@ -48,7 +107,7 @@ const AdminServices = () => {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Gestion des services</h1>
+        <h1 className="text-2xl font-bold text-gray-800">Gestion des services principaux</h1>
         <Link 
           to="/admin/services/new" 
           className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
@@ -67,34 +126,26 @@ const AdminServices = () => {
         </div>
       )}
       
-      {successMessage && (
-        <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-6" role="alert">
-          <p>{successMessage}</p>
-        </div>
-      )}
-      
       <div className="bg-white shadow rounded-lg overflow-hidden mb-6">
         <div className="p-4 border-b border-gray-200">
-          <div className="flex items-center">
-            <div className="relative flex-grow">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg className="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                  <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <input
-                type="text"
-                className="focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 pr-3 py-2 border-gray-300 rounded-md"
-                placeholder="Rechercher un service..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <svg className="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+              </svg>
             </div>
+            <input
+              type="text"
+              className="focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 pr-3 py-2 border-gray-300 rounded-md"
+              placeholder="Rechercher un service..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
           </div>
         </div>
         
         {filteredServices.length === 0 ? (
-          <div className="px-6 py-12 text-center">
+          <div className="text-center py-12">
             <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
@@ -134,13 +185,13 @@ const AdminServices = () => {
                     Service
                   </th>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Prix
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Durée
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Catégorie
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Abonnements
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Utilisateurs
                   </th>
                   <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Actions
@@ -154,7 +205,7 @@ const AdminServices = () => {
                       <div className="flex items-center">
                         <div className="flex-shrink-0 h-10 w-10">
                           {service.imageUrl ? (
-                            <img className="h-10 w-10 rounded-full" src={service.imageUrl} alt={service.name} />
+                            <img className="h-10 w-10 rounded-full object-cover" src={service.imageUrl} alt={service.name} />
                           ) : (
                             <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold">
                               {service.name.charAt(0)}
@@ -168,12 +219,6 @@ const AdminServices = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{service.price.toFixed(2)} €</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{service.duration} jours</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
                       {service.category ? (
                         <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
                           {service.category}
@@ -182,15 +227,21 @@ const AdminServices = () => {
                         <span className="text-sm text-gray-500">-</span>
                       )}
                     </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">{service.subscriptionCount || 0}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">{service.totalUsers || 0}</div>
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex justify-end space-x-2">
                         <Link 
-                          to={`/admin/credentials/${service.id}`} 
+                          to={`/admin/services/${service.id}/subscriptions`} 
                           className="text-purple-600 hover:text-purple-900"
-                          title="Gérer les identifiants"
+                          title="Gérer les abonnements"
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                            <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z" />
                           </svg>
                         </Link>
                         <Link 
@@ -203,8 +254,7 @@ const AdminServices = () => {
                           </svg>
                         </Link>
                         <button 
-                          onClick={() => handleDelete(service.id, service.name)}
-                          disabled={deleteLoading}
+                          onClick={() => handleDelete(service.id)}
                           className="text-red-600 hover:text-red-900"
                           title="Supprimer"
                         >
@@ -225,4 +275,4 @@ const AdminServices = () => {
   );
 };
 
-export default AdminServices;
+export default AdminMainServices;

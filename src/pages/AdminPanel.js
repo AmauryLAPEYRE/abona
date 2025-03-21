@@ -1,9 +1,5 @@
 import React, { useState } from 'react';
-import { Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
-import AdminServices from '../components/admin/AdminServices';
-import AdminServiceForm from '../components/admin/AdminServiceForm';
-import AdminCredentials from '../components/admin/AdminCredentials';
-import AdminUsers from '../components/admin/AdminUsers';
+import { Routes, Route, Link, useLocation, Navigate, Outlet } from 'react-router-dom';
 
 const AdminPanel = () => {
   const location = useLocation();
@@ -71,21 +67,7 @@ const AdminPanel = () => {
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                 </svg>
-                {!collapsed && <span>Ajouter un service</span>}
-              </Link>
-              
-              <Link 
-                to="/admin/credentials" 
-                className={`flex items-center px-4 py-3 mb-2 rounded-lg ${
-                  isActive('/admin/credentials') 
-                    ? 'bg-blue-50 text-blue-700' 
-                    : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                </svg>
-                {!collapsed && <span>Identifiants</span>}
+                {!collapsed && <span>Nouveau service</span>}
               </Link>
               
               <Link 
@@ -121,15 +103,7 @@ const AdminPanel = () => {
       {/* Contenu principal */}
       <div className={`flex-1 ${collapsed ? 'ml-16' : 'ml-64'} transition-all duration-300`}>
         <div className="py-6 px-8">
-          <Routes>
-            <Route path="/" element={<Navigate to="/admin/services" replace />} />
-            <Route path="services" element={<AdminServices />} />
-            <Route path="services/new" element={<AdminServiceForm />} />
-            <Route path="services/edit/:id" element={<AdminServiceForm />} />
-            <Route path="credentials" element={<AdminCredentials />} />
-            <Route path="credentials/:serviceId" element={<AdminCredentials />} />
-            <Route path="users" element={<AdminUsers />} />
-          </Routes>
+          <Outlet /> {/* Affiche les composants enfants basés sur les routes */}
         </div>
       </div>
     </div>

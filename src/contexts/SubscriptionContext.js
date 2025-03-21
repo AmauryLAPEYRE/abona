@@ -9,12 +9,13 @@ export function useSubscriptions() {
 }
 
 export function SubscriptionProvider({ children }) {
-  const [services, setServices] = useState([]);
+  const [mainServices, setMainServices] = useState([]);
+  const [availableSubscriptions, setAvailableSubscriptions] = useState([]);
   const [userSubscriptions, setUserSubscriptions] = useState([]);
   const [loading, setLoading] = useState(true);
   const { currentUser } = useAuth();
 
-  // Récupérer les services disponibles
+  // Récupérer les services principaux disponibles
   useEffect(() => {
     const unsubscribe = firestore.collection('services')
       .onSnapshot(snapshot => {
@@ -22,7 +23,7 @@ export function SubscriptionProvider({ children }) {
           id: doc.id,
           ...doc.data()
         }));
-        setServices(servicesData);
+        setMainServices(servicesData);
         setLoading(false);
       });
 
@@ -36,7 +37,7 @@ export function SubscriptionProvider({ children }) {
       return;
     }
 
-    const unsubscribe = firestore.collection('subscriptions')
+    const unsubscribe = firestore.collection('userSubscriptions')
       .where('userId', '==', currentUser.uid)
       .onSnapshot(snapshot => {
         const subscriptionsData = snapshot.docs.map(doc => ({
@@ -49,6 +50,127 @@ export function SubscriptionProvider({ children }) {
     return unsubscribe;
   }, [currentUser]);
 
+  // Obtenir les abonnements disponibles pour un service
+  const getAvailableSubscriptions = async (serviceId) => {
+    try {
+      // Récupérer tous les abonnements actifs pour ce service
+      const subscriptionsSnapshot = await firestore
+        .collection('services')
+        .doc(serviceId)
+        .collection('subscriptions')
+        .where('isActive', '==', true)
+        .get();
+      
+      // Filtrer pour ne garder que ceux qui ont des places disponibles
+      const availableSubs = subscriptionsSnapshot.docs
+        .map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }))
+        .filter(sub => (sub.currentUsers || 0) < sub.maxUsers);
+      
+      setAvailableSubscriptions(availableSubs);
+      return availableSubs;
+    } catch (error) {
+      console.error('Erreur lors de la récupération des abonnements:', error);
+      return [];
+    }
+  };
+
+  // Acheter un abonnement
+  const purchaseSubscription = async (serviceId, subscriptionId, paymentId) => {
+    try {
+      // Récupérer les détails du service
+      const serviceDoc = await firestore.collection('services').doc(serviceId).get();
+      if (!serviceDoc.exists) {
+        throw new Error('Service non trouvé');
+      }
+      const serviceData = serviceDoc.data();
+      
+      // Récupérer les détails de l'abonnement
+      const subscriptionDoc = await firestore
+        .collection('services')
+        .doc(serviceId)
+        .collection('subscriptions')
+        .doc(subscriptionId)
+        .get();
+      
+      if (!subscriptionDoc.exists) {
+        throw new Error('Abonnement non trouvé');
+      }
+      
+      const subscriptionData = subscriptionDoc.data();
+      
+      // Vérifier s'il y a des places disponibles
+      if (subscriptionData.currentUsers >= subscriptionData.maxUsers) {
+        throw new Error('Cet abonnement est complet');
+      }
+      
+      // Transaction Firestore pour assurer l'atomicité
+      return firestore.runTransaction(async (transaction) => {
+        // Récupérer le document à jour dans la transaction
+        const freshSubDoc = await transaction.get(subscriptionDoc.ref);
+        const freshSubData = freshSubDoc.data();
+        
+        // Revérifier dans la transaction s'il y a des places disponibles
+        if (freshSubData.currentUsers >= freshSubData.maxUsers) {
+          throw new Error('Cet abonnement est complet');
+        }
+        
+        // Définir les dates de début et d'expiration
+        const startDate = new Date();
+        const expiryDate = new Date(startDate.getTime() + (subscriptionData.duration * 24 * 60 * 60 * 1000));
+        
+        // Créer l'entrée utilisateur à ajouter à l'abonnement
+        const userEntry = {
+          userId: currentUser.uid,
+          displayName: currentUser.displayName || 'Utilisateur',
+          email: currentUser.email,
+          joinedAt: startDate,
+          expiryDate: expiryDate,
+          paymentId: paymentId
+        };
+        
+        // Mettre à jour l'abonnement
+        transaction.update(subscriptionDoc.ref, {
+          currentUsers: (freshSubData.currentUsers || 0) + 1,
+          users: [...(freshSubData.users || []), userEntry]
+        });
+        
+        // Créer l'entrée d'abonnement utilisateur
+        const userSubscriptionRef = firestore.collection('userSubscriptions').doc();
+        
+        const userSubscriptionData = {
+          userId: currentUser.uid,
+          serviceId: serviceId,
+          serviceName: serviceData.name,
+          subscriptionId: subscriptionId,
+          subscriptionName: subscriptionData.name,
+          accessType: subscriptionData.accessType,
+          email: subscriptionData.accessType === 'account' ? subscriptionData.email : null,
+          password: subscriptionData.accessType === 'account' ? subscriptionData.password : null,
+          invitationLink: subscriptionData.accessType === 'invitation' ? subscriptionData.invitationLink : null,
+          startDate: startDate,
+          expiryDate: expiryDate,
+          isActive: true,
+          paymentId: paymentId,
+          price: subscriptionData.price,
+          createdAt: startDate
+        };
+        
+        transaction.set(userSubscriptionRef, userSubscriptionData);
+        
+        return {
+          userSubscriptionId: userSubscriptionRef.id,
+          ...userSubscriptionData
+        };
+      });
+    } catch (error) {
+      console.error('Erreur lors de l\'achat de l\'abonnement:', error);
+      throw error;
+    }
+  };
+
   // Admin Functions
   async function addService(serviceData) {
     return firestore.collection('services').add({
@@ -58,80 +180,69 @@ export function SubscriptionProvider({ children }) {
   }
 
   async function updateService(serviceId, serviceData) {
-    return firestore.collection('services').doc(serviceId).update(serviceData);
-  }
-
-  async function deleteService(serviceId) {
-    return firestore.collection('services').doc(serviceId).delete();
-  }
-
-  async function addSubscriptionCredentials(serviceId, credentials) {
-    return firestore.collection('services').doc(serviceId).collection('credentials').add({
-      ...credentials,
-      inUse: false,
-      createdAt: new Date()
+    return firestore.collection('services').doc(serviceId).update({
+      ...serviceData,
+      updatedAt: new Date()
     });
   }
 
-  // User Functions
-  async function getAvailableCredential(serviceId) {
-    const snapshot = await firestore.collection('services')
-      .doc(serviceId)
-      .collection('credentials')
-      .where('inUse', '==', false)
-      .limit(1)
-      .get();
-    
-    if (snapshot.empty) {
-      throw new Error('No available credentials');
-    }
-    
-    return {
-      id: snapshot.docs[0].id,
-      ...snapshot.docs[0].data()
-    };
+  async function deleteService(serviceId) {
+    // Note: Cette fonction devrait également supprimer tous les abonnements associés
+    // Mais c'est mieux de le faire avec une fonction Cloud Firebase pour assurer l'atomicité
+    return firestore.collection('services').doc(serviceId).delete();
   }
 
-  async function createSubscription(serviceId, paymentId, userId) {
-    // Récupérer un identifiant disponible
-    const credential = await getAvailableCredential(serviceId);
-    const service = services.find(s => s.id === serviceId);
-    
-    // Marquer l'identifiant comme utilisé
-    await firestore.collection('services')
+  async function addSubscription(serviceId, subscriptionData) {
+    return firestore
+      .collection('services')
       .doc(serviceId)
-      .collection('credentials')
-      .doc(credential.id)
-      .update({ inUse: true });
-    
-    // Créer l'abonnement
-    const subscription = {
-      userId,
-      serviceId,
-      serviceName: service.name,
-      credentialId: credential.id,
-      paymentId,
-      email: credential.email,
-      password: credential.password,
-      accessLink: credential.accessLink || null,
-      startDate: new Date(),
-      expiryDate: new Date(Date.now() + service.duration * 24 * 60 * 60 * 1000),
-      status: 'active'
-    };
-    
-    return firestore.collection('subscriptions').add(subscription);
+      .collection('subscriptions')
+      .add({
+        ...subscriptionData,
+        currentUsers: 0,
+        users: [],
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+  }
+
+  async function updateSubscription(serviceId, subscriptionId, subscriptionData) {
+    return firestore
+      .collection('services')
+      .doc(serviceId)
+      .collection('subscriptions')
+      .doc(subscriptionId)
+      .update({
+        ...subscriptionData,
+        updatedAt: new Date()
+      });
+  }
+
+  async function deleteSubscription(serviceId, subscriptionId) {
+    // Note: Cette fonction devrait également vérifier s'il y a des utilisateurs actifs
+    // Mais c'est mieux de le faire avec une fonction Cloud Firebase
+    return firestore
+      .collection('services')
+      .doc(serviceId)
+      .collection('subscriptions')
+      .doc(subscriptionId)
+      .delete();
   }
 
   const value = {
-    services,
+    mainServices,
+    availableSubscriptions,
     userSubscriptions,
     loading,
+    getAvailableSubscriptions,
+    purchaseSubscription,
+    // Admin functions
     addService,
     updateService,
     deleteService,
-    addSubscriptionCredentials,
-    createSubscription,
-    getAvailableCredential
+    addSubscription,
+    updateSubscription,
+    deleteSubscription
   };
 
   return (
