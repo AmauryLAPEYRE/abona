@@ -242,16 +242,16 @@ const Checkout = () => {
             </form>
             
             <div className="mt-6 text-center">
-              <p className="text-xs text-gray-500">
-                En cliquant sur "Payer", vous acceptez nos{' '}
-                <a href="#" className="text-blue-600 hover:text-blue-800">
-                  conditions d'utilisation
-                </a>{' '}
-                et notre{' '}
-                <a href="#" className="text-blue-600 hover:text-blue-800">
-                  politique de confidentialité
-                </a>.
-              </p>
+                <p className="text-xs text-gray-500">
+                    En cliquant sur "Payer", vous acceptez nos{' '}
+                    <Link to="/terms" className="text-blue-600 hover:text-blue-800">
+                    conditions d'utilisation
+                    </Link>{' '}
+                    et notre{' '}
+                    <Link to="/privacy" className="text-blue-600 hover:text-blue-800">
+                    politique de confidentialité
+                    </Link>.
+                </p>
             </div>
           </div>
         </div>
