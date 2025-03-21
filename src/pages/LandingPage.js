@@ -8,7 +8,7 @@ const LandingPage = () => {
       <header className="container mx-auto px-4 py-6">
         <div className="flex justify-between items-center">
           <div className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">
-            ShareSub
+            Abona
           </div>
           <div className="flex space-x-4">
             <Link to="/login" className="text-white hover:text-blue-300 transition-colors">Connexion</Link>
@@ -236,7 +236,7 @@ const LandingPage = () => {
           <div className="flex flex-col md:flex-row justify-between items-center">
             <div className="mb-6 md:mb-0">
               <div className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500 mb-2">
-                ShareSub
+                Abona
               </div>
               <p className="text-gray-400">Accès premium, prix mini</p>
             </div>
