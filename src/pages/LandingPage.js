@@ -242,11 +242,11 @@ const LandingPage = () => {
             </div>
             
             <div className="flex flex-wrap justify-center gap-x-8 gap-y-4">
-              <Link to="/services" className="text-gray-300 hover:text-white">Services</Link>
-              <a href="#" className="text-gray-300 hover:text-white">À propos</a>
-              <a href="#" className="text-gray-300 hover:text-white">Conditions d'utilisation</a>
-              <a href="#" className="text-gray-300 hover:text-white">Politique de confidentialité</a>
-              <a href="#" className="text-gray-300 hover:text-white">Contact</a>
+                <Link to="/services" className="text-gray-300 hover:text-white">Services</Link>
+                <Link to="/about" className="text-gray-300 hover:text-white">À propos</Link>
+                <Link to="/terms" className="text-gray-300 hover:text-white">Conditions d'utilisation</Link>
+                <Link to="/privacy" className="text-gray-300 hover:text-white">Politique de confidentialité</Link>
+                <Link to="/contact" className="text-gray-300 hover:text-white">Contact</Link>
             </div>
           </div>
           

@@ -128,13 +128,12 @@ const Register = () => {
               />
               <label htmlFor="terms" className="ml-2 block text-sm text-white">
                 J'accepte les{' '}
-                <a href="#" className="text-blue-400 hover:text-blue-300">
-                  conditions d'utilisation
-                </a>{' '}
-                et la{' '}
-                <a href="#" className="text-blue-400 hover:text-blue-300">
-                  politique de confidentialité
-                </a>
+                    <Link to="/terms" className="text-blue-400 hover:text-blue-300">
+                        conditions d'utilisation
+                    </Link>
+                    <Link to="/privacy" className="text-blue-400 hover:text-blue-300">
+                        politique de confidentialité
+                    </Link>
               </label>
             </div>
 
