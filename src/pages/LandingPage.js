@@ -26,8 +26,11 @@ const LandingPage = () => {
             Des abonnements premium
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500"> sans les prix premium</span>
           </h1>
-          <p className="text-xl md:text-2xl text-gray-300 mb-10 max-w-3xl mx-auto">
+          <p className="text-xl md:text-2xl text-gray-300 mb-4 max-w-3xl mx-auto">
             Abona vous offre un accès direct à des services d'abonnement premium à prix réduit, sans les tracas du partage entre particuliers.
+          </p>
+          <p className="text-xl text-gray-300 mb-10 max-w-3xl mx-auto">
+            <span className="font-bold text-white">Exclusif :</span> Payez uniquement pour la durée dont vous avez besoin, de 2 jours à plusieurs mois.
           </p>
           <div className="flex flex-col sm:flex-row justify-center gap-4">
             <Link 
@@ -60,8 +63,8 @@ const LandingPage = () => {
             
             <div className="text-center">
               <div className="w-16 h-16 bg-purple-600 rounded-full flex items-center justify-center text-2xl font-bold mx-auto mb-6">2</div>
-              <h3 className="text-xl font-bold mb-4">Abonnez-vous en quelques clics</h3>
-              <p className="text-gray-300">Paiement simple et sécurisé. Pas d'engagement à long terme. Annulez quand vous le souhaitez.</p>
+              <h3 className="text-xl font-bold mb-4">Sélectionnez votre durée</h3>
+              <p className="text-gray-300">Besoin d'un accès pour 2 jours, 1 semaine ou plusieurs mois ? Vous payez uniquement pour la durée choisie.</p>
             </div>
             
             <div className="text-center">
@@ -100,6 +103,16 @@ const LandingPage = () => {
             </div>
             
             <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6 hover:shadow-lg hover:shadow-blue-500/10 transition-all duration-300">
+              <div className="text-purple-400 mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-bold mb-3">Durée ultra-flexible</h3>
+              <p className="text-gray-300">Contrairement aux autres services, choisissez une durée de 2 jours, 1 semaine ou plus, et payez exactement au prorata. Idéal pour tester ou pour les besoins ponctuels.</p>
+            </div>
+            
+            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6 hover:shadow-lg hover:shadow-blue-500/10 transition-all duration-300">
               <div className="text-green-400 mb-4">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -128,16 +141,6 @@ const LandingPage = () => {
               <h3 className="text-xl font-bold mb-3">Support réactif</h3>
               <p className="text-gray-300">Une équipe support disponible 7j/7 pour vous aider en cas de problème avec vos accès.</p>
             </div>
-            
-            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6 hover:shadow-lg hover:shadow-blue-500/10 transition-all duration-300">
-              <div className="text-indigo-400 mb-4">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-bold mb-3">Paiement sécurisé</h3>
-              <p className="text-gray-300">Transactions sécurisées via Stripe, avec prise en charge de toutes les principales cartes de crédit.</p>
-            </div>
           </div>
         </div>
       </div>
@@ -162,6 +165,7 @@ const LandingPage = () => {
                   <span className="line-through text-gray-400">17.99€</span>
                 </div>
                 <div className="mt-1 text-sm text-gray-400">par mois</div>
+                <div className="mt-1 text-xs text-green-400">ou 0.99€ pour 2 jours</div>
                 <Link to="/services" className="mt-4 block text-center bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">
                   Voir l'offre
                 </Link>
@@ -179,6 +183,7 @@ const LandingPage = () => {
                   <span className="line-through text-gray-400">9.99€</span>
                 </div>
                 <div className="mt-1 text-sm text-gray-400">par mois</div>
+                <div className="mt-1 text-xs text-green-400">ou 0.66€ pour 5 jours</div>
                 <Link to="/services" className="mt-4 block text-center bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">
                   Voir l'offre
                 </Link>
@@ -196,6 +201,7 @@ const LandingPage = () => {
                   <span className="line-through text-gray-400">8.99€</span>
                 </div>
                 <div className="mt-1 text-sm text-gray-400">par mois</div>
+                <div className="mt-1 text-xs text-green-400">ou 1.49€ pour 2 semaines</div>
                 <Link to="/services" className="mt-4 block text-center bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">
                   Voir l'offre
                 </Link>
@@ -210,6 +216,42 @@ const LandingPage = () => {
                 <path fillRule="evenodd" d="M10.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L12.586 11H5a1 1 0 110-2h7.586l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
               </svg>
             </Link>
+          </div>
+        </div>
+      </div>
+
+      {/* Bannière de la tarification flexible */}
+      <div className="py-16 bg-gradient-to-r from-blue-700 to-purple-700">
+        <div className="container mx-auto px-4 text-center">
+          <h2 className="text-3xl font-bold mb-4">Tarification flexible - Payez pour ce que vous utilisez</h2>
+          <p className="text-xl text-white/90 max-w-3xl mx-auto mb-8">
+            À la différence des autres plateformes, Abona vous permet de payer uniquement pour la durée exacte dont vous avez besoin
+          </p>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
+            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+              <div className="text-2xl font-bold mb-1">2 jours</div>
+              <p className="text-sm mb-3">Pour un besoin ponctuel</p>
+              <div className="text-green-400 text-xl">à partir de 0.66€</div>
+            </div>
+            
+            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+              <div className="text-2xl font-bold mb-1">1 semaine</div>
+              <p className="text-sm mb-3">Pour un séjour court</p>
+              <div className="text-green-400 text-xl">à partir de 1.29€</div>
+            </div>
+            
+            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+              <div className="text-2xl font-bold mb-1">2 semaines</div>
+              <p className="text-sm mb-3">Pour les vacances</p>
+              <div className="text-green-400 text-xl">à partir de 1.99€</div>
+            </div>
+            
+            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+              <div className="text-2xl font-bold mb-1">1 mois ou plus</div>
+              <p className="text-sm mb-3">Utilisation régulière</p>
+              <div className="text-green-400 text-xl">à partir de 2.99€</div>
+            </div>
           </div>
         </div>
       </div>
@@ -238,7 +280,7 @@ const LandingPage = () => {
               <div className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500 mb-2">
                 Abona
               </div>
-              <p className="text-gray-400">Accès premium, prix mini</p>
+              <p className="text-gray-400">Accès premium, prix mini, durée flexible</p>
             </div>
             
             <div className="flex flex-wrap justify-center gap-x-8 gap-y-4">

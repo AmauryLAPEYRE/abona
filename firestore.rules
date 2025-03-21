@@ -2,6 +2,62 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Fonctions d'aide
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Règles pour les utilisateurs
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow create: if isAuthenticated() && isOwner(userId);
+      allow update: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow delete: if isAdmin();
+    }
+    
+    // Règles pour les services
+    match /services/{serviceId} {
+      // Tout le monde peut lire les services
+      allow read: if true;
+      // Seul l'administrateur peut créer, modifier ou supprimer des services
+      allow write: if isAdmin();
+      
+      // Règles pour les abonnements au sein d'un service
+      match /subscriptions/{subscriptionId} {
+        // Tout le monde peut lire les abonnements
+        allow read: if true;
+        // Seul l'administrateur peut créer, modifier ou supprimer des abonnements
+        allow write: if isAdmin();
+      }
+    }
+    
+    // Règles pour les abonnements utilisateur
+    match /userSubscriptions/{subscriptionId} {
+      // Les utilisateurs peuvent lire leurs propres abonnements, les administrateurs peuvent tout lire
+      allow read: if isAuthenticated() && 
+        (request.auth.uid == resource.data.userId || isAdmin());
+      
+      // Les abonnements ne peuvent être créés que par le système (via des fonctions Cloud)
+      // ou par les administrateurs
+      allow create: if isAdmin();
+      
+      // Seuls les administrateurs peuvent modifier les abonnements utilisateur
+      allow update: if isAdmin();
+      
+      // Seuls les administrateurs peuvent supprimer les abonnements utilisateur
+      allow delete: if isAdmin();
+    }
+    
+    // Par défaut, refuser l'accès
     match /{document=**} {
       allow read, write: if false;
     }

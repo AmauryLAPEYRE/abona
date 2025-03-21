@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { useStripe as useStripeContext } from '../contexts/StripeContext';
 import { useSubscriptions } from '../contexts/SubscriptionContext';
@@ -8,10 +8,13 @@ import { firestore } from '../firebase';
 
 const Checkout = () => {
   const { serviceId, subscriptionId } = useParams();
+  const location = useLocation();
+  const duration = parseInt(new URLSearchParams(location.search).get('duration') || '30');
+  
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { createPaymentIntent, confirmPayment, processing } = useStripeContext();
-  const { purchaseSubscription } = useSubscriptions();
+  const { purchaseSubscription, calculateProRatedPrice } = useSubscriptions();
   
   const [service, setService] = useState(null);
   const [subscription, setSubscription] = useState(null);
@@ -19,6 +22,7 @@ const Checkout = () => {
   const [clientSecret, setClientSecret] = useState('');
   const [cardComplete, setCardComplete] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [proratedPrice, setProratedPrice] = useState(0);
   
   const stripe = useStripe();
   const elements = useElements();
@@ -70,8 +74,12 @@ const Checkout = () => {
         
         setSubscription(subscriptionData);
         
-        // Créer l'intention de paiement
-        const { clientSecret } = await createPaymentIntent(serviceId, subscriptionData.price);
+        // Calculer le prix proratisé
+        const prorated = calculateProRatedPrice(subscriptionData.price, duration);
+        setProratedPrice(prorated);
+        
+        // Créer l'intention de paiement avec le prix proratisé
+        const { clientSecret } = await createPaymentIntent(serviceId, subscriptionId, duration, prorated);
         setClientSecret(clientSecret);
         
         setLoading(false);
@@ -83,7 +91,7 @@ const Checkout = () => {
     };
     
     fetchData();
-  }, [serviceId, subscriptionId, createPaymentIntent]);
+  }, [serviceId, subscriptionId, duration, createPaymentIntent, calculateProRatedPrice]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -113,7 +121,7 @@ const Checkout = () => {
       if (paymentIntent.status === 'succeeded') {
         try {
           // Enregistrement de l'abonnement pour l'utilisateur avec la nouvelle structure
-          const result = await purchaseSubscription(serviceId, subscriptionId, paymentIntent.id);
+          const result = await purchaseSubscription(serviceId, subscriptionId, paymentIntent.id, duration);
           
           // Rediriger vers la page de succès
           navigate('/success', { 
@@ -122,7 +130,9 @@ const Checkout = () => {
               serviceId: service.id,
               serviceName: service.name,
               subscriptionName: subscription.name,
-              accessType: subscription.accessType
+              accessType: subscription.accessType,
+              duration: duration,
+              price: proratedPrice
             } 
           });
         } catch (err) {
@@ -227,10 +237,6 @@ const Checkout = () => {
                       </p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <span className="font-bold text-gray-800">{subscription.price.toFixed(2)} €</span>
-                    <p className="text-sm text-gray-500">pour {subscription.duration} jours</p>
-                  </div>
                 </div>
                 
                 <div className="mb-4 bg-blue-50 p-3 rounded-lg">
@@ -245,11 +251,24 @@ const Checkout = () => {
                   </div>
                 </div>
                 
-                <div className="border-t border-gray-200 pt-4 mt-4">
-                  <div className="flex justify-between items-center font-bold">
-                    <span className="text-gray-800">Total à payer:</span>
-                    <span className="text-blue-600 text-xl">{subscription.price.toFixed(2)} €</span>
+                <div className="space-y-3 border-b border-gray-200 pb-4 mb-4">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Durée:</span>
+                    <span className="font-medium">{duration} jours</span>
                   </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Prix mensuel standard:</span>
+                    <span className="font-medium">{subscription.price.toFixed(2)} €</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Prix proratisé pour {duration} jours:</span>
+                    <span className="font-medium text-blue-600">{proratedPrice.toFixed(2)} €</span>
+                  </div>
+                </div>
+                
+                <div className="flex justify-between items-center font-bold">
+                  <span className="text-gray-800">Total à payer:</span>
+                  <span className="text-blue-600 text-xl">{proratedPrice.toFixed(2)} €</span>
                 </div>
               </div>
             </div>
@@ -299,7 +318,7 @@ const Checkout = () => {
                     Traitement en cours...
                   </>
                 ) : (
-                  `Payer ${subscription.price.toFixed(2)} €`
+                  `Payer ${proratedPrice.toFixed(2)} €`
                 )}
               </button>
             </form>

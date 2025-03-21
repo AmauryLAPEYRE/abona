@@ -297,56 +297,36 @@ const SubscriptionForm = () => {
             </div>
           )}
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-            <div>
-              <label htmlFor="price" className="block text-sm font-medium text-gray-700 mb-1">
-                Prix (€) <span className="text-red-500">*</span>
-              </label>
-              <div className="mt-1 relative rounded-md shadow-sm">
+          <div>
+            <label htmlFor="price" className="block text-sm font-medium text-gray-700 mb-1">
+                Prix mensuel (€) <span className="text-red-500">*</span>
+            </label>
+            <div className="mt-1 relative rounded-md shadow-sm">
                 <input
-                  type="number"
-                  id="price"
-                  className="focus:ring-blue-500 focus:border-blue-500 block w-full pl-3 pr-12 sm:text-sm border-gray-300 rounded-md"
-                  placeholder="0.00"
-                  step="0.01"
-                  min="0"
-                  value={price}
-                  onChange={(e) => setPrice(e.target.value)}
-                  required
+                type="number"
+                id="price"
+                className="focus:ring-blue-500 focus:border-blue-500 block w-full pl-3 pr-12 sm:text-sm border-gray-300 rounded-md"
+                placeholder="0.00"
+                step="0.01"
+                min="0"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                required
                 />
                 <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                  <span className="text-gray-500 sm:text-sm">€</span>
+                <span className="text-gray-500 sm:text-sm">€ / mois</span>
                 </div>
-              </div>
-              <p className="mt-1 text-xs text-gray-500">
-                Suggestion: {service?.defaultPrice ? `${service.defaultPrice.toFixed(2)} €` : 'Non défini'}
-              </p>
             </div>
-            
-            <div>
-              <label htmlFor="duration" className="block text-sm font-medium text-gray-700 mb-1">
-                Durée (jours) <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="number"
-                id="duration"
-                className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                placeholder="30"
-                min="1"
-                value={duration}
-                onChange={(e) => setDuration(e.target.value)}
-                required
-              />
-              <p className="mt-1 text-xs text-gray-500">
-                Suggestion: {service?.defaultDuration ? `${service.defaultDuration} jours` : 'Non défini'}
-              </p>
+            <p className="mt-1 text-xs text-gray-500">
+                Le prix sera automatiquement proratisé selon la durée choisie par l'utilisateur
+            </p>
             </div>
-            
+
             <div>
-              <label htmlFor="maxUsers" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="maxUsers" className="block text-sm font-medium text-gray-700 mb-1">
                 Nombre max d'utilisateurs <span className="text-red-500">*</span>
-              </label>
-              <input
+            </label>
+            <input
                 type="number"
                 id="maxUsers"
                 className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
@@ -355,12 +335,11 @@ const SubscriptionForm = () => {
                 value={maxUsers}
                 onChange={(e) => setMaxUsers(e.target.value)}
                 required
-              />
-              <p className="mt-1 text-xs text-gray-500">
+            />
+            <p className="mt-1 text-xs text-gray-500">
                 Suggestion: {service?.defaultMaxUsers ? service.defaultMaxUsers : 'Non défini'}
-              </p>
-            </div>
-          </div>
+            </p>
+        </div>
           
           <div className="mb-6">
             <div className="flex items-center">

@@ -8,13 +8,24 @@ const ServiceDetailsPage = () => {
   const { serviceId } = useParams();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const { getAvailableSubscriptions } = useSubscriptions();
+  const { getAvailableSubscriptions, calculateProRatedPrice } = useSubscriptions();
   
   const [service, setService] = useState(null);
   const [subscriptions, setSubscriptions] = useState([]);
   const [selectedSubscription, setSelectedSubscription] = useState(null);
+  const [selectedDuration, setSelectedDuration] = useState(30); // 30 jours par défaut
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  // Options de durée disponibles
+  const durationOptions = [
+    { value: 2, label: '2 jours' },
+    { value: 7, label: '1 semaine' },
+    { value: 14, label: '2 semaines' },
+    { value: 30, label: '1 mois' },
+    { value: 60, label: '2 mois' },
+    { value: 90, label: '3 mois' }
+  ];
   
   useEffect(() => {
     const fetchData = async () => {
@@ -65,7 +76,7 @@ const ServiceDetailsPage = () => {
       return;
     }
     
-    navigate(`/checkout/${serviceId}/${selectedSubscription.id}`);
+    navigate(`/checkout/${serviceId}/${selectedSubscription.id}?duration=${selectedDuration}`);
   };
   
   if (loading) {
@@ -183,7 +194,7 @@ const ServiceDetailsPage = () => {
                               </div>
                               <div className="text-right">
                                 <p className="text-lg font-bold text-blue-600">{subscription.price.toFixed(2)} €</p>
-                                <p className="text-xs text-gray-500">{subscription.duration} jours</p>
+                                <p className="text-xs text-gray-500">prix mensuel</p>
                               </div>
                             </div>
                             
@@ -197,6 +208,40 @@ const ServiceDetailsPage = () => {
                             </div>
                           </div>
                         ))}
+                      </div>
+                      
+                      {/* Sélecteur de durée */}
+                      <div className="mb-6 border-t border-gray-200 pt-4">
+                        <h3 className="text-md font-bold text-gray-800 mb-2">Choisissez votre durée d'abonnement</h3>
+                        
+                        <div className="flex flex-col space-y-2">
+                          <select 
+                            value={selectedDuration}
+                            onChange={(e) => setSelectedDuration(parseInt(e.target.value))}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            {durationOptions.map(option => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                          
+                          {selectedSubscription && (
+                            <div className="bg-blue-50 p-3 rounded-lg">
+                              <div className="flex justify-between">
+                                <span className="text-gray-700">Prix mensuel:</span>
+                                <span className="font-medium">{selectedSubscription.price.toFixed(2)} €</span>
+                              </div>
+                              <div className="flex justify-between mt-1">
+                                <span className="text-gray-700">Prix pour {selectedDuration} jours:</span>
+                                <span className="font-bold text-blue-600">
+                                  {calculateProRatedPrice(selectedSubscription.price, selectedDuration)} €
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                       
                       <button
@@ -248,13 +293,13 @@ const ServiceDetailsPage = () => {
             <div className="flex items-center mb-4">
               <div className="bg-purple-100 p-2 rounded-md">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <h3 className="ml-3 text-lg font-medium text-gray-800">Paiement sécurisé</h3>
+              <h3 className="ml-3 text-lg font-medium text-gray-800">Durée flexible</h3>
             </div>
             <p className="text-gray-600">
-              Toutes les transactions sont sécurisées par Stripe avec cryptage SSL. Nous n'enregistrons jamais vos données de carte.
+              Choisissez exactement la durée d'abonnement qui vous convient, de 2 jours à 3 mois, avec un prix automatiquement ajusté.
             </p>
           </div>
         </div>

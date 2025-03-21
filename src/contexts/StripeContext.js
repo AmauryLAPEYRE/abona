@@ -4,7 +4,7 @@ import { Elements } from '@stripe/react-stripe-js';
 import { functions } from '../firebase';
 
 // Remplacer par votre clé publique Stripe
-const stripePromise = loadStripe('pk_test_VOTRE_CLE_PUBLIQUE_STRIPE');
+const stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLIC_KEY || 'pk_test_VOTRE_CLE_PUBLIQUE_STRIPE');
 
 const StripeContext = createContext();
 
@@ -15,13 +15,15 @@ export function useStripe() {
 export function StripeProvider({ children }) {
   const [processing, setProcessing] = useState(false);
 
-  async function createPaymentIntent(serviceId, amount) {
+  async function createPaymentIntent(serviceId, subscriptionId, duration, amount) {
     setProcessing(true);
     try {
       const createPaymentIntentFunction = functions.httpsCallable('createPaymentIntent');
       const result = await createPaymentIntentFunction({
         serviceId,
-        amount: amount * 100 // Stripe utilise les centimes
+        subscriptionId,
+        duration,
+        amount // Montant déjà proratisé
       });
       return result.data;
     } finally {
@@ -29,11 +31,13 @@ export function StripeProvider({ children }) {
     }
   }
 
-  async function confirmPayment(paymentIntentId, serviceId) {
+  async function confirmPayment(paymentIntentId, serviceId, subscriptionId, duration) {
     const confirmPaymentFunction = functions.httpsCallable('confirmSubscription');
     return confirmPaymentFunction({
       paymentIntentId,
-      serviceId
+      serviceId,
+      subscriptionId,
+      duration
     });
   }
 

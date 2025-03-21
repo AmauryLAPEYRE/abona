@@ -1,24 +1,30 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useSubscriptions } from '../contexts/SubscriptionContext';
 import { useAuth } from '../contexts/AuthContext';
+import { firestore } from '../firebase';
 
 const ServicesListPage = () => {
   const { mainServices, loading } = useSubscriptions();
   const { currentUser } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Tous');
+  const [error, setError] = useState(null);
+  const [localServices, setLocalServices] = useState([]);
+  const [localLoading, setLocalLoading] = useState(true);
   
   // Extraire toutes les catégories uniques des services
   const allCategories = ['Tous'];
-  mainServices.forEach(service => {
+  const services = mainServices.length > 0 ? mainServices : localServices;
+  
+  services.forEach(service => {
     if (service.category && !allCategories.includes(service.category)) {
       allCategories.push(service.category);
     }
   });
 
   // Filtrer les services en fonction du terme de recherche et de la catégorie
-  const filteredServices = mainServices.filter(service => {
+  const filteredServices = services.filter(service => {
     const matchesSearch = service.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                          service.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === 'Tous' || service.category === selectedCategory;
@@ -35,10 +41,57 @@ const ServicesListPage = () => {
     servicesByCategory[category].push(service);
   });
 
-  if (loading) {
+  // Chargement direct depuis Firestore au cas où le contexte échoue
+  useEffect(() => {
+    const fetchServices = async () => {
+      if (mainServices.length > 0) {
+        setLocalLoading(false);
+        return;
+      }
+      
+      try {
+        setLocalLoading(true);
+        const servicesSnapshot = await firestore.collection('services').get();
+        const servicesData = servicesSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setLocalServices(servicesData);
+        setLocalLoading(false);
+      } catch (err) {
+        console.error("Erreur lors du chargement des services:", err);
+        setError(err.message || "Erreur lors du chargement des services. Veuillez réessayer.");
+        setLocalLoading(false);
+      }
+    };
+    
+    fetchServices();
+  }, [mainServices]);
+
+  if ((loading && localLoading) || (localLoading && mainServices.length === 0)) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      <div className="flex justify-center items-center h-screen bg-gradient-to-b from-gray-900 to-blue-900">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-white">Chargement des services...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-gray-900 to-blue-900">
+        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-6 rounded-lg max-w-xl">
+          <p className="font-bold text-xl mb-2">Erreur lors du chargement des services</p>
+          <p className="mb-4">{error}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors"
+          >
+            Réessayer
+          </button>
+        </div>
       </div>
     );
   }
