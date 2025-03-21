@@ -27,7 +27,7 @@ const LandingPage = () => {
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500"> sans les prix premium</span>
           </h1>
           <p className="text-xl md:text-2xl text-gray-300 mb-10 max-w-3xl mx-auto">
-            ShareSub vous offre un accès direct à des services d'abonnement premium à prix réduit, sans les tracas du partage entre particuliers.
+            Abona vous offre un accès direct à des services d'abonnement premium à prix réduit, sans les tracas du partage entre particuliers.
           </p>
           <div className="flex flex-col sm:flex-row justify-center gap-4">
             <Link 
