@@ -1,8 +1,7 @@
-// Import Firebase v9+ avec la nouvelle syntaxe
-import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import { getFunctions } from 'firebase/functions';
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/auth';
+import 'firebase/compat/firestore';
+import 'firebase/compat/functions';
 
 const firebaseConfig = {
     apiKey: "AIzaSyC4Jz3AnOLNy4y3phDwft_1qh2dKhU0HW0",
@@ -15,10 +14,10 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
+const app = firebase.initializeApp(firebaseConfig);
 
 // Exporter les services Firebase
-export const auth = getAuth(app);
-export const firestore = getFirestore(app);
-export const functions = getFunctions(app);
+export const auth = firebase.auth();
+export const firestore = firebase.firestore();
+export const functions = firebase.functions();
 export default app;
