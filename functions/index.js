@@ -1,4 +1,4 @@
-const functions = require('firebase-functions');
+const { onCall } = require("firebase-functions/v2/https");
 const admin = require('firebase-admin');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 

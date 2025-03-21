@@ -1,70 +1,175 @@
-# Getting Started with Create React App
+# ShareSub - Application de Partage d'Abonnements
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+ShareSub est une plateforme qui permet aux utilisateurs d'accéder à des services d'abonnement premium (Netflix, ChatGPT, etc.) à prix réduit en partageant les accès. L'application gère automatiquement la distribution des identifiants, le paiement sécurisé et le suivi des abonnements.
 
-## Available Scripts
+![ShareSub Preview](https://placehold.co/600x400?text=ShareSub+Preview)
 
-In the project directory, you can run:
+## 🌟 Fonctionnalités
 
-### `npm start`
+### Côté utilisateur
+- Inscription et connexion sécurisées
+- Parcourir les services disponibles
+- Paiement sécurisé via Stripe
+- Tableau de bord personnel avec accès aux identifiants
+- Suivi des dates d'expiration
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+### Côté administrateur
+- Gestion complète des services (ajout, modification, suppression)
+- Configuration des prix et durées d'abonnement
+- Gestion des identifiants de connexion pour chaque service
+- Suivi des utilisateurs et de leurs abonnements
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+## 🛠️ Technologies utilisées
 
-### `npm test`
+- **Frontend**: React.js, Tailwind CSS
+- **Backend**: Firebase (Authentication, Firestore, Cloud Functions)
+- **Paiement**: Stripe
+- **Déploiement**: Firebase Hosting
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## 📋 Prérequis
 
-### `npm run build`
+- Node.js (v14 ou supérieur)
+- Compte Firebase
+- Compte Stripe
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+## 🚀 Installation
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+### 1. Cloner le dépôt
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+```bash
+git clone https://github.com/votre-username/abona.git
+cd abona
+```
 
-### `npm run eject`
+### 2. Installer les dépendances
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+```bash
+npm install
+```
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+### 3. Configurer Firebase
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+1. Créez un projet sur [Firebase Console](https://console.firebase.google.com/)
+2. Activez Authentication, Firestore, Storage et Functions
+3. Dans les paramètres du projet, récupérez les informations de configuration
+4. Créez un fichier `.env` à la racine du projet avec ces informations
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+```
+REACT_APP_FIREBASE_API_KEY=votre_api_key
+REACT_APP_FIREBASE_AUTH_DOMAIN=votre_app.firebaseapp.com
+REACT_APP_FIREBASE_PROJECT_ID=votre_app
+REACT_APP_FIREBASE_STORAGE_BUCKET=votre_app.appspot.com
+REACT_APP_FIREBASE_MESSAGING_SENDER_ID=votre_messaging_id
+REACT_APP_FIREBASE_APP_ID=votre_app_id
+REACT_APP_MEASUREMENT_ID=votre_measurement_id
+```
 
-## Learn More
+### 4. Configurer Stripe
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+1. Créez un compte sur [Stripe](https://stripe.com/)
+2. Récupérez vos clés API (publique et secrète)
+3. Ajoutez la clé publique dans votre fichier `.env`
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+```
+REACT_APP_STRIPE_PUBLIC_KEY=votre_cle_publique_stripe
+```
 
-### Code Splitting
+4. Configurez la clé secrète pour les fonctions Firebase
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+```bash
+firebase functions:config:set stripe.secret=votre_cle_secrete_stripe
+```
 
-### Analyzing the Bundle Size
+### 5. Installer les dépendances des fonctions Firebase
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+```bash
+cd functions
+npm install
+cd ..
+```
 
-### Making a Progressive Web App
+## 📁 Structure du projet
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+```
+abona/
+├── src/                    # Code source React
+│   ├── components/         # Composants React réutilisables
+│   ├── contexts/           # Contextes React (auth, stripe, subscriptions)
+│   ├── pages/              # Pages principales
+│   ├── firebase.js         # Configuration Firebase
+│   └── App.js              # Composant principal
+├── functions/              # Fonctions Firebase (backend)
+├── public/                 # Fichiers statiques
+└── README.md               # Ce fichier
+```
 
-### Advanced Configuration
+## 🎯 Utilisation
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+### Démarrer en mode développement
 
-### Deployment
+```bash
+npm start
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+### Construire pour la production
 
-### `npm run build` fails to minify
+```bash
+npm run build
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+### Déployer sur Firebase
+
+```bash
+firebase deploy
+```
+
+### Configuration initiale (après déploiement)
+
+1. Créez un compte utilisateur sur l'application déployée
+2. Dans Firebase Console > Firestore Database, trouvez le document utilisateur que vous venez de créer
+3. Modifiez le champ `role` pour lui donner la valeur `admin`
+4. Reconnectez-vous à l'application, vous aurez maintenant accès au panneau d'administration
+
+## 💼 Gestion de l'application (Administrateur)
+
+### Ajouter un service
+
+1. Connectez-vous en tant qu'administrateur
+2. Accédez au panneau d'administration
+3. Cliquez sur "Ajouter un service"
+4. Remplissez les informations (nom, description, prix, durée)
+5. Ajoutez une image (optionnel)
+6. Enregistrez le service
+
+### Ajouter des identifiants
+
+1. Dans le panneau d'administration, cliquez sur "Gérer les identifiants"
+2. Sélectionnez le service concerné
+3. Ajoutez les informations d'accès (email/mot de passe et/ou lien d'accès)
+4. Les identifiants seront automatiquement attribués aux utilisateurs lors de l'achat
+
+## 🔧 Personnalisation
+
+### Modifier le thème
+
+Le style de l'application est basé sur Tailwind CSS. Vous pouvez personnaliser les couleurs et autres styles dans le fichier `tailwind.config.js`.
+
+### Ajouter de nouvelles fonctionnalités
+
+Pour ajouter de nouvelles fonctionnalités:
+
+1. Créez les composants React nécessaires dans le dossier `src/components`
+2. Ajoutez les routes dans `src/App.js` si nécessaire
+3. Implémentez la logique backend dans les fonctions Firebase si besoin
+
+## 📄 Licence
+
+Ce projet est sous licence MIT. Voir le fichier LICENSE pour plus de détails.
+
+## 🙏 Crédits
+
+Développé par [Votre Nom](https://github.com/votre-username)
+
+---
+
+Pour toute question ou assistance, n'hésitez pas à ouvrir une issue sur le dépôt GitHub.
