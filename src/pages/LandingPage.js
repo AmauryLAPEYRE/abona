@@ -251,7 +251,7 @@ const LandingPage = () => {
           </div>
           
           <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-500 text-sm">
-            &copy; {new Date().getFullYear()} ShareSub. Tous droits réservés.
+            &copy; {new Date().getFullYear()} Abona. Tous droits réservés.
           </div>
         </div>
       </footer>
