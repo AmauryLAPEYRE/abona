@@ -1,0 +1,25 @@
+[debug] [2025-03-21T15:46:25.440Z] ----------------------------------------------------------------------
+[debug] [2025-03-21T15:46:25.443Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\lapeyrea\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js init hosting
+[debug] [2025-03-21T15:46:25.443Z] CLI Version:   13.35.1
+[debug] [2025-03-21T15:46:25.444Z] Platform:      win32
+[debug] [2025-03-21T15:46:25.444Z] Node Version:  v20.18.3
+[debug] [2025-03-21T15:46:25.444Z] Time:          Fri Mar 21 2025 16:46:25 GMT+0100 (heure normale d’Europe centrale)
+[debug] [2025-03-21T15:46:25.444Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2025-03-21T15:46:25.598Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2025-03-21T15:46:25.598Z] > authorizing via signed-in user (amos.lapeyre@gmail.com)
+[info] 
+     ######## #### ########  ######## ########     ###     ######  ########
+     ##        ##  ##     ## ##       ##     ##  ##   ##  ##       ##
+     ######    ##  ########  ######   ########  #########  ######  ######
+     ##        ##  ##    ##  ##       ##     ## ##     ##       ## ##
+     ##       #### ##     ## ######## ########  ##     ##  ######  ########
+
+You're about to initialize a Firebase project in this directory:
+
+  C:\Users\lapeyrea\Documents\ProjetsPersonnels\abona
+
+Before we get started, keep in mind:
+
+  * You are initializing within an existing Firebase project directory
+

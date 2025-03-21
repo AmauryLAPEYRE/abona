@@ -17,6 +17,7 @@
     }
   ],
   "hosting": {
+    "site": "abona-8d0c8",
     "public": "build",
     "ignore": [
       "firebase.json",
