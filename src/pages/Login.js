@@ -32,7 +32,7 @@ const Login = () => {
     <div className="min-h-screen bg-gradient-to-b from-gray-900 to-blue-900 py-12 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
       <div className="max-w-md w-full bg-white/10 backdrop-blur-md rounded-xl shadow-xl overflow-hidden">
         <div className="bg-gradient-to-r from-blue-600 to-purple-600 py-6">
-          <h1 className="text-center text-2xl font-bold text-white">Connexion à ShareSub</h1>
+          <h1 className="text-center text-2xl font-bold text-white">Connexion à Abona</h1>
         </div>
         
         <div className="p-6 sm:p-8">
