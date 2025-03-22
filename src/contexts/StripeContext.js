@@ -15,7 +15,7 @@ export function useStripe() {
 export function StripeProvider({ children }) {
   const [processing, setProcessing] = useState(false);
 
-  async function createPaymentIntent(serviceId, subscriptionId, duration, amount) {
+  async function createPaymentIntent(serviceId, subscriptionId, duration, amount, isRecurring = false) {
     setProcessing(true);
     try {
       const createPaymentIntentFunction = functions.httpsCallable('createPaymentIntent');
@@ -23,7 +23,8 @@ export function StripeProvider({ children }) {
         serviceId,
         subscriptionId,
         duration,
-        amount // Montant déjà proratisé
+        amount,
+        isRecurring
       });
       return result.data;
     } finally {
@@ -31,20 +32,31 @@ export function StripeProvider({ children }) {
     }
   }
 
-  async function confirmPayment(paymentIntentId, serviceId, subscriptionId, duration) {
+  async function confirmPayment(paymentIntentId, serviceId, subscriptionId, duration, isRecurring = false) {
     const confirmPaymentFunction = functions.httpsCallable('confirmSubscription');
     return confirmPaymentFunction({
       paymentIntentId,
       serviceId,
       subscriptionId,
-      duration
+      duration,
+      isRecurring
+    });
+  }
+
+  async function confirmRecurringPayment(paymentMethodId, serviceId, subscriptionId) {
+    const setupRecurringFunction = functions.httpsCallable('setupRecurringPayment');
+    return setupRecurringFunction({
+      paymentMethodId,
+      serviceId,
+      subscriptionId
     });
   }
 
   const value = {
     processing,
     createPaymentIntent,
-    confirmPayment
+    confirmPayment,
+    confirmRecurringPayment
   };
 
   return (

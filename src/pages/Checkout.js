@@ -10,10 +10,11 @@ const Checkout = () => {
   const { serviceId, subscriptionId } = useParams();
   const location = useLocation();
   const duration = parseInt(new URLSearchParams(location.search).get('duration') || '30');
+  const isRecurring = new URLSearchParams(location.search).get('recurring') === 'true';
   
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const { createPaymentIntent, confirmPayment, processing } = useStripeContext();
+  const { createPaymentIntent, confirmPayment, confirmRecurringPayment, processing } = useStripeContext();
   const { purchaseSubscription, calculateProRatedPrice } = useSubscriptions();
   
   const [service, setService] = useState(null);
@@ -23,6 +24,7 @@ const Checkout = () => {
   const [cardComplete, setCardComplete] = useState(false);
   const [loading, setLoading] = useState(true);
   const [proratedPrice, setProratedPrice] = useState(0);
+  const [isSetupIntent, setIsSetupIntent] = useState(false);
   
   const stripe = useStripe();
   const elements = useElements();
@@ -74,13 +76,23 @@ const Checkout = () => {
         
         setSubscription(subscriptionData);
         
-        // Calculer le prix proratisé
-        const prorated = calculateProRatedPrice(subscriptionData.price, duration);
+        // Calculer le prix proratisé pour les durées uniques
+        const prorated = isRecurring 
+          ? subscriptionData.price 
+          : calculateProRatedPrice(subscriptionData.price, duration);
         setProratedPrice(prorated);
         
         // Créer l'intention de paiement avec le prix proratisé
-        const { clientSecret } = await createPaymentIntent(serviceId, subscriptionId, duration, prorated);
+        const { clientSecret, isSetupIntent: isSetup } = await createPaymentIntent(
+          serviceId, 
+          subscriptionId, 
+          duration, 
+          prorated, 
+          isRecurring
+        );
+        
         setClientSecret(clientSecret);
+        setIsSetupIntent(isSetup || false);
         
         setLoading(false);
       } catch (err) {
@@ -91,7 +103,7 @@ const Checkout = () => {
     };
     
     fetchData();
-  }, [serviceId, subscriptionId, duration, createPaymentIntent, calculateProRatedPrice]);
+  }, [serviceId, subscriptionId, duration, isRecurring, createPaymentIntent, calculateProRatedPrice]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -103,40 +115,90 @@ const Checkout = () => {
     const cardElement = elements.getElement(CardElement);
     
     try {
-      const { error, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
-        payment_method: {
-          card: cardElement,
-          billing_details: {
-            name: currentUser.displayName || currentUser.email,
-            email: currentUser.email
+      if (isSetupIntent) {
+        // Traiter un paiement récurrent
+        const { error: setupError, setupIntent } = await stripe.confirmCardSetup(clientSecret, {
+          payment_method: {
+            card: cardElement,
+            billing_details: {
+              name: currentUser.displayName || currentUser.email,
+              email: currentUser.email
+            }
           }
+        });
+        
+        if (setupError) {
+          setError(`Erreur de configuration: ${setupError.message}`);
+          return;
         }
-      });
-      
-      if (error) {
-        setError(`Erreur de paiement: ${error.message}`);
-        return;
-      }
-      
-      if (paymentIntent.status === 'succeeded') {
+        
+        // Configuration réussie, mettre en place l'abonnement récurrent
         try {
-          // Enregistrement de l'abonnement pour l'utilisateur avec la nouvelle structure
-          const result = await purchaseSubscription(serviceId, subscriptionId, paymentIntent.id, duration);
+          const result = await confirmRecurringPayment(
+            setupIntent.payment_method, 
+            serviceId, 
+            subscriptionId
+          );
           
-          // Rediriger vers la page de succès
-          navigate('/success', { 
-            state: { 
-              userSubscriptionId: result.userSubscriptionId,
-              serviceId: service.id,
-              serviceName: service.name,
-              subscriptionName: subscription.name,
-              accessType: subscription.accessType,
-              duration: duration,
-              price: proratedPrice
-            } 
-          });
+          if (result && result.data && result.data.success) {
+            navigate('/success', { 
+              state: { 
+                serviceId: service.id,
+                serviceName: service.name,
+                isRecurring: true,
+                subscriptionId: result.data.subscriptionId
+              } 
+            });
+          } else {
+            setError('Échec de la configuration de l\'abonnement récurrent');
+          }
         } catch (err) {
           setError(`Erreur lors de la finalisation: ${err.message}`);
+        }
+      } else {
+        // Traiter un paiement unique
+        const { error, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
+          payment_method: {
+            card: cardElement,
+            billing_details: {
+              name: currentUser.displayName || currentUser.email,
+              email: currentUser.email
+            }
+          }
+        });
+        
+        if (error) {
+          setError(`Erreur de paiement: ${error.message}`);
+          return;
+        }
+        
+        if (paymentIntent.status === 'succeeded') {
+          try {
+            // Enregistrement de l'abonnement pour l'utilisateur
+            const result = await purchaseSubscription(
+              serviceId, 
+              subscriptionId, 
+              paymentIntent.id, 
+              duration,
+              false // non récurrent
+            );
+            
+            // Rediriger vers la page de succès
+            navigate('/success', { 
+              state: { 
+                userSubscriptionId: result.userSubscriptionId,
+                serviceId: service.id,
+                serviceName: service.name,
+                subscriptionName: subscription.name,
+                accessType: subscription.accessType,
+                duration: duration,
+                price: proratedPrice,
+                isRecurring: false
+              } 
+            });
+          } catch (err) {
+            setError(`Erreur lors de la finalisation: ${err.message}`);
+          }
         }
       }
     } catch (err) {
@@ -253,22 +315,36 @@ const Checkout = () => {
                 
                 <div className="space-y-3 border-b border-gray-200 pb-4 mb-4">
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Durée:</span>
-                    <span className="font-medium">{duration} jours</span>
+                    <span className="text-gray-600">Type d'abonnement:</span>
+                    <span className="font-medium">
+                      {isRecurring ? 'Mensuel récurrent' : `Durée unique (${duration} jours)`}
+                    </span>
                   </div>
+                  {!isRecurring && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Durée:</span>
+                      <span className="font-medium">{duration} jours</span>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <span className="text-gray-600">Prix mensuel standard:</span>
                     <span className="font-medium">{subscription.price.toFixed(2)} €</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Prix proratisé pour {duration} jours:</span>
-                    <span className="font-medium text-blue-600">{proratedPrice.toFixed(2)} €</span>
-                  </div>
+                  {!isRecurring && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Prix proratisé pour {duration} jours:</span>
+                      <span className="font-medium text-blue-600">{proratedPrice.toFixed(2)} €</span>
+                    </div>
+                  )}
                 </div>
                 
                 <div className="flex justify-between items-center font-bold">
                   <span className="text-gray-800">Total à payer:</span>
-                  <span className="text-blue-600 text-xl">{proratedPrice.toFixed(2)} €</span>
+                  <span className="text-blue-600 text-xl">
+                    {isRecurring 
+                      ? `${subscription.price.toFixed(2)} € / mois` 
+                      : `${proratedPrice.toFixed(2)} € unique`}
+                  </span>
                 </div>
               </div>
             </div>
@@ -318,22 +394,24 @@ const Checkout = () => {
                     Traitement en cours...
                   </>
                 ) : (
-                  `Payer ${proratedPrice.toFixed(2)} €`
+                  isRecurring 
+                    ? `S'abonner pour ${subscription.price.toFixed(2)} € / mois` 
+                    : `Payer ${proratedPrice.toFixed(2)} €`
                 )}
               </button>
             </form>
             
             <div className="mt-6 text-center">
-                <p className="text-xs text-gray-500">
-                    En cliquant sur "Payer", vous acceptez nos{' '}
-                    <Link to="/terms" className="text-blue-600 hover:text-blue-800">
-                    conditions d'utilisation
-                    </Link>{' '}
-                    et notre{' '}
-                    <Link to="/privacy" className="text-blue-600 hover:text-blue-800">
-                    politique de confidentialité
-                    </Link>.
-                </p>
+              <p className="text-xs text-gray-500">
+                En cliquant sur "Payer", vous acceptez nos{' '}
+                <Link to="/terms" className="text-blue-600 hover:text-blue-800">
+                  conditions d'utilisation
+                </Link>{' '}
+                et notre{' '}
+                <Link to="/privacy" className="text-blue-600 hover:text-blue-800">
+                  politique de confidentialité
+                </Link>.
+              </p>
             </div>
           </div>
         </div>

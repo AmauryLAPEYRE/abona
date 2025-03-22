@@ -13,19 +13,10 @@ const ServiceDetailsPage = () => {
   const [service, setService] = useState(null);
   const [subscriptions, setSubscriptions] = useState([]);
   const [selectedSubscription, setSelectedSubscription] = useState(null);
-  const [selectedDuration, setSelectedDuration] = useState(30); // 30 jours par défaut
+  const [customDuration, setCustomDuration] = useState(14);
+  const [isRecurring, setIsRecurring] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  
-  // Options de durée disponibles
-  const durationOptions = [
-    { value: 2, label: '2 jours' },
-    { value: 7, label: '1 semaine' },
-    { value: 14, label: '2 semaines' },
-    { value: 30, label: '1 mois' },
-    { value: 60, label: '2 mois' },
-    { value: 90, label: '3 mois' }
-  ];
   
   useEffect(() => {
     const fetchData = async () => {
@@ -76,7 +67,8 @@ const ServiceDetailsPage = () => {
       return;
     }
     
-    navigate(`/checkout/${serviceId}/${selectedSubscription.id}?duration=${selectedDuration}`);
+    const duration = isRecurring ? 30 : customDuration; // 30 jours pour l'abonnement récurrent
+    navigate(`/checkout/${serviceId}/${selectedSubscription.id}?duration=${duration}&recurring=${isRecurring}`);
   };
   
   if (loading) {
@@ -210,37 +202,86 @@ const ServiceDetailsPage = () => {
                         ))}
                       </div>
                       
-                      {/* Sélecteur de durée */}
+                      {/* Options de durée */}
                       <div className="mb-6 border-t border-gray-200 pt-4">
-                        <h3 className="text-md font-bold text-gray-800 mb-2">Choisissez votre durée d'abonnement</h3>
+                        <h3 className="text-md font-bold text-gray-800 mb-4">Choisissez votre type d'abonnement</h3>
                         
-                        <div className="flex flex-col space-y-2">
-                          <select 
-                            value={selectedDuration}
-                            onChange={(e) => setSelectedDuration(parseInt(e.target.value))}
-                            className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          >
-                            {durationOptions.map(option => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
+                        <div className="flex flex-col space-y-4">
+                          {/* Option d'abonnement récurrent */}
+                          <div className="flex items-center">
+                            <input
+                              id="recurring"
+                              name="subscription-type"
+                              type="radio"
+                              checked={isRecurring}
+                              onChange={() => setIsRecurring(true)}
+                              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                            />
+                            <label htmlFor="recurring" className="ml-2 block text-sm font-medium text-gray-700">
+                              Abonnement mensuel récurrent
+                            </label>
+                          </div>
                           
-                          {selectedSubscription && (
-                            <div className="bg-blue-50 p-3 rounded-lg">
-                              <div className="flex justify-between">
-                                <span className="text-gray-700">Prix mensuel:</span>
-                                <span className="font-medium">{selectedSubscription.price.toFixed(2)} €</span>
-                              </div>
-                              <div className="flex justify-between mt-1">
-                                <span className="text-gray-700">Prix pour {selectedDuration} jours:</span>
-                                <span className="font-bold text-blue-600">
-                                  {calculateProRatedPrice(selectedSubscription.price, selectedDuration)} €
-                                </span>
+                          {/* Option de durée unique */}
+                          <div className="flex items-center">
+                            <input
+                              id="one-time"
+                              name="subscription-type"
+                              type="radio"
+                              checked={!isRecurring}
+                              onChange={() => setIsRecurring(false)}
+                              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                            />
+                            <label htmlFor="one-time" className="ml-2 block text-sm font-medium text-gray-700">
+                              Durée unique
+                            </label>
+                          </div>
+                          
+                          {/* Afficher le slider de durée uniquement si "Durée unique" est sélectionnée */}
+                          {!isRecurring && (
+                            <div className="mt-2 pl-6">
+                              <label htmlFor="custom-duration" className="block text-sm font-medium text-gray-700 mb-2">
+                                Choisissez votre durée (2-30 jours)
+                              </label>
+                              <div className="flex items-center">
+                                <input
+                                  type="range"
+                                  id="custom-duration"
+                                  min="2"
+                                  max="30"
+                                  value={customDuration}
+                                  onChange={(e) => setCustomDuration(parseInt(e.target.value))}
+                                  className="w-full mr-4"
+                                />
+                                <span className="text-sm font-medium">{customDuration} jours</span>
                               </div>
                             </div>
                           )}
+                          
+                          {/* Affichage du prix */}
+                          <div className="bg-blue-50 p-3 rounded-lg mt-4">
+                            {isRecurring ? (
+                              <div className="flex justify-between">
+                                <span className="text-gray-700">Abonnement mensuel:</span>
+                                <span className="font-bold text-blue-600">
+                                  {selectedSubscription?.price.toFixed(2)} € / mois
+                                </span>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="flex justify-between">
+                                  <span className="text-gray-700">Prix mensuel:</span>
+                                  <span className="font-medium">{selectedSubscription?.price.toFixed(2)} €</span>
+                                </div>
+                                <div className="flex justify-between mt-1">
+                                  <span className="text-gray-700">Prix pour {customDuration} jours:</span>
+                                  <span className="font-bold text-blue-600">
+                                    {calculateProRatedPrice(selectedSubscription?.price || 0, customDuration)} €
+                                  </span>
+                                </div>
+                              </>
+                            )}
+                          </div>
                         </div>
                       </div>
                       
@@ -249,7 +290,7 @@ const ServiceDetailsPage = () => {
                         disabled={!selectedSubscription}
                         className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold py-3 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        S'abonner maintenant
+                        {isRecurring ? "S'abonner mensuellement" : "Acheter pour " + customDuration + " jours"}
                       </button>
                     </div>
                   )}

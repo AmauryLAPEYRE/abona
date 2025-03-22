@@ -105,7 +105,7 @@ export function SubscriptionProvider({ children }) {
   };
 
   // Acheter un abonnement
-  const purchaseSubscription = async (serviceId, subscriptionId, paymentId, duration) => {
+  const purchaseSubscription = async (serviceId, subscriptionId, paymentId, duration, isRecurring = false) => {
     try {
       // Récupérer les détails du service
       const serviceDoc = await firestore.collection('services').doc(serviceId).get();
@@ -133,10 +133,10 @@ export function SubscriptionProvider({ children }) {
         throw new Error('Cet abonnement est complet');
       }
       
-      // Calculer le prix proratisé
+      // Calculer le prix proratisé ou utiliser le prix mensuel complet
       const startDate = new Date();
       const expiryDate = new Date(startDate.getTime() + (duration * 24 * 60 * 60 * 1000));
-      const proratedPrice = calculateProRatedPrice(subscriptionData.price, duration);
+      const proratedPrice = isRecurring ? subscriptionData.price : calculateProRatedPrice(subscriptionData.price, duration);
       
       // Transaction Firestore pour assurer l'atomicité
       return firestore.runTransaction(async (transaction) => {
@@ -157,7 +157,8 @@ export function SubscriptionProvider({ children }) {
           joinedAt: startDate,
           expiryDate: expiryDate,
           paymentId: paymentId,
-          duration: duration
+          duration: duration,
+          isRecurring: isRecurring
         };
         
         // Mettre à jour l'abonnement
@@ -182,10 +183,12 @@ export function SubscriptionProvider({ children }) {
           startDate: startDate,
           expiryDate: expiryDate,
           isActive: true,
+          isRecurring: isRecurring,
           paymentId: paymentId,
           originalPrice: subscriptionData.price,
           proratedPrice: proratedPrice,
           duration: duration,
+          nextBillingDate: isRecurring ? new Date(startDate.getTime() + (30 * 24 * 60 * 60 * 1000)) : null,
           createdAt: startDate
         };
         
