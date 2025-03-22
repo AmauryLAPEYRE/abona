@@ -1,6 +1,8 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useForm } from '../hooks/useForm';
+import { translateErrorCode } from '../utils/errorUtils';
 
 // Composant d'indicateur de force du mot de passe
 const PasswordStrengthIndicator = React.memo(({ password }) => {
@@ -52,168 +54,77 @@ const PasswordStrengthIndicator = React.memo(({ password }) => {
   );
 });
 
-const Register = () => {
-  const [formState, setFormState] = useState({
-    name: '',
-    email: '',
-    password: '',
-    confirmPassword: ''
-  });
-  const [touched, setTouched] = useState({});
-  const [errors, setErrors] = useState({});
-  const [loading, setLoading] = useState(false);
-  const [serverError, setServerError] = useState('');
+// Fonction de validation du formulaire d'inscription
+const validateRegisterForm = (values, fieldName = null) => {
+  const errors = {};
   
+  // Si un champ spécifique est fourni, on ne valide que celui-là
+  if (fieldName === 'name' || !fieldName) {
+    if (!values.name?.trim()) {
+      errors.name = 'Le nom est requis';
+    }
+  }
+  
+  if (fieldName === 'email' || !fieldName) {
+    if (!values.email) {
+      errors.email = 'L\'email est requis';
+    } else if (!/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(values.email)) {
+      errors.email = 'L\'adresse email est invalide';
+    }
+  }
+  
+  if (fieldName === 'password' || !fieldName) {
+    if (!values.password) {
+      errors.password = 'Le mot de passe est requis';
+    } else if (values.password.length < 6) {
+      errors.password = 'Le mot de passe doit contenir au moins 6 caractères';
+    }
+  }
+  
+  if (fieldName === 'confirmPassword' || !fieldName) {
+    if (values.password !== values.confirmPassword) {
+      errors.confirmPassword = 'Les mots de passe ne correspondent pas';
+    }
+  }
+  
+  return errors;
+};
+
+const Register = () => {
   const { register } = useAuth();
   const navigate = useNavigate();
+  const [serverError, setServerError] = useState('');
   
-  // Gestionnaire générique pour les changements de champ
-  const handleChange = useCallback((e) => {
-    const { name, value } = e.target;
-    setFormState(prev => ({ ...prev, [name]: value }));
-  }, []);
+  // Initialiser le formulaire avec notre hook personnalisé
+  const {
+    values,
+    errors,
+    touched,
+    isSubmitting,
+    handleChange,
+    handleBlur,
+    handleSubmit,
+    fieldHasError
+  } = useForm(
+    {
+      name: '',
+      email: '',
+      password: '',
+      confirmPassword: ''
+    },
+    validateRegisterForm
+  );
   
-  // Marquer un champ comme touché lorsqu'il perd le focus
-  const handleBlur = useCallback((e) => {
-    const { name } = e.target;
-    setTouched(prev => ({ ...prev, [name]: true }));
-  }, []);
-  
-  // Validation du formulaire
-  const validateForm = useCallback(() => {
-    const newErrors = {};
-    
-    // Valider le nom
-    if (!formState.name.trim()) {
-      newErrors.name = 'Le nom est requis';
-    }
-    
-    // Valider l'email
-    if (!formState.email) {
-      newErrors.email = 'L\'email est requis';
-    } else if (!/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(formState.email)) {
-      newErrors.email = 'L\'adresse email est invalide';
-    }
-    
-    // Valider le mot de passe
-    if (!formState.password) {
-      newErrors.password = 'Le mot de passe est requis';
-    } else if (formState.password.length < 6) {
-      newErrors.password = 'Le mot de passe doit contenir au moins 6 caractères';
-    }
-    
-    // Valider la confirmation du mot de passe
-    if (formState.password !== formState.confirmPassword) {
-      newErrors.confirmPassword = 'Les mots de passe ne correspondent pas';
-    }
-    
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  }, [formState]);
-  
-  // Valider les champs individuels lorsqu'ils changent
-  useEffect(() => {
-    // Crée une fonction de validation pour chaque champ
-    const validateField = (field) => {
-      let error = '';
-      
-      switch (field) {
-        case 'name':
-          if (!formState.name.trim()) error = 'Le nom est requis';
-          break;
-        case 'email':
-          if (!formState.email) {
-            error = 'L\'email est requis';
-          } else if (!/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(formState.email)) {
-            error = 'L\'adresse email est invalide';
-          }
-          break;
-        case 'password':
-          if (!formState.password) {
-            error = 'Le mot de passe est requis';
-          } else if (formState.password.length < 6) {
-            error = 'Le mot de passe doit contenir au moins 6 caractères';
-          }
-          break;
-        case 'confirmPassword':
-          if (formState.password !== formState.confirmPassword) {
-            error = 'Les mots de passe ne correspondent pas';
-          }
-          break;
-        default:
-          break;
-      }
-      
-      return error;
-    };
-    
-    // Pour chaque champ qui a été touché, mettre à jour les erreurs
-    Object.keys(touched).forEach(field => {
-      if (touched[field]) {
-        const fieldError = validateField(field);
-        setErrors(prev => ({
-          ...prev,
-          [field]: fieldError
-        }));
-      }
-    });
-  }, [formState, touched]);
-  
-  // Soumettre le formulaire
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    // Marquer tous les champs comme touchés pour déclencher la validation
-    setTouched({
-      name: true,
-      email: true,
-      password: true,
-      confirmPassword: true
-    });
-    
-    // Valider le formulaire
-    const isValid = validateForm();
-    
-    if (!isValid) {
-      return;
-    }
-    
-    setServerError('');
-    setLoading(true);
-    
+  // Gestion de la soumission du formulaire
+  const submitRegistration = async (formValues) => {
     try {
-      await register(formState.email, formState.password, formState.name);
+      setServerError('');
+      await register(formValues.email, formValues.password, formValues.name);
       navigate('/dashboard');
     } catch (error) {
       console.error('Erreur d\'inscription:', error);
-      
-      // Messages d'erreur spécifiques
-      if (error.code === 'auth/email-already-in-use') {
-        setServerError('Cette adresse email est déjà utilisée par un autre compte.');
-      } else if (error.code === 'auth/invalid-email') {
-        setServerError('L\'adresse email n\'est pas valide.');
-      } else if (error.code === 'auth/weak-password') {
-        setServerError('Le mot de passe est trop faible. Il doit contenir au moins 6 caractères.');
-      } else {
-        setServerError(error.message || 'Échec de la création du compte. Veuillez réessayer.');
-      }
-    } finally {
-      setLoading(false);
+      setServerError(translateErrorCode(error.code) || error.message || 'Échec de la création du compte');
     }
-  };
-  
-  // Afficher un message d'erreur pour un champ
-  const ErrorMessage = ({ name }) => {
-    if (!errors[name] || !touched[name]) return null;
-    
-    return (
-      <p className="mt-1 text-sm text-red-600">{errors[name]}</p>
-    );
-  };
-  
-  // Déterminer si un champ a une erreur
-  const fieldHasError = (name) => {
-    return touched[name] && errors[name];
   };
   
   // Classes pour les champs de formulaire
@@ -223,6 +134,12 @@ const Register = () => {
         ? 'border-red-500 focus:ring-red-500' 
         : 'border-white/10 focus:ring-blue-500'
     } rounded-lg w-full py-3 px-4 text-white leading-tight focus:outline-none focus:ring-2 focus:border-transparent`;
+  };
+  
+  // Afficher un message d'erreur pour un champ
+  const ErrorMessage = ({ name }) => {
+    if (!errors[name] || !touched[name]) return null;
+    return <p className="mt-1 text-sm text-red-600">{errors[name]}</p>;
   };
   
   return (
@@ -239,7 +156,7 @@ const Register = () => {
             </div>
           )}
           
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit(submitRegistration)} className="space-y-5">
             <div>
               <label htmlFor="name" className="block text-sm font-medium text-white mb-2">
                 Nom
@@ -250,7 +167,7 @@ const Register = () => {
                 type="text"
                 autoComplete="name"
                 required
-                value={formState.name}
+                value={values.name}
                 onChange={handleChange}
                 onBlur={handleBlur}
                 className={getInputClasses('name')}
@@ -269,7 +186,7 @@ const Register = () => {
                 type="email"
                 autoComplete="email"
                 required
-                value={formState.email}
+                value={values.email}
                 onChange={handleChange}
                 onBlur={handleBlur}
                 className={getInputClasses('email')}
@@ -288,14 +205,14 @@ const Register = () => {
                 type="password"
                 autoComplete="new-password"
                 required
-                value={formState.password}
+                value={values.password}
                 onChange={handleChange}
                 onBlur={handleBlur}
                 className={getInputClasses('password')}
                 placeholder="••••••••"
               />
               <ErrorMessage name="password" />
-              <PasswordStrengthIndicator password={formState.password} />
+              <PasswordStrengthIndicator password={values.password} />
             </div>
 
             <div>
@@ -308,7 +225,7 @@ const Register = () => {
                 type="password"
                 autoComplete="new-password"
                 required
-                value={formState.confirmPassword}
+                value={values.confirmPassword}
                 onChange={handleChange}
                 onBlur={handleBlur}
                 className={getInputClasses('confirmPassword')}
@@ -340,18 +257,20 @@ const Register = () => {
             <div>
               <button
                 type="submit"
-                disabled={loading}
+                disabled={isSubmitting}
                 className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors ${
-                  loading ? 'opacity-70 cursor-not-allowed' : ''
+                  isSubmitting ? 'opacity-70 cursor-not-allowed' : ''
                 }`}
               >
-                {loading ? (
-                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                ) : null}
-                {loading ? "Création en cours..." : "Créer un compte"}
+                {isSubmitting ? (
+                  <>
+                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Création en cours...
+                  </>
+                ) : "Créer un compte"}
               </button>
             </div>
           </form>

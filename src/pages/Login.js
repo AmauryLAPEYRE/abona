@@ -1,154 +1,90 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useForm } from '../hooks/useForm';
+import { translateErrorCode } from '../utils/errorUtils';
+
+// Fonction de validation spécifique à la connexion
+const validateLoginForm = (values, fieldName = null) => {
+  const errors = {};
+  
+  // Si on spécifie un champ, on ne valide que celui-là
+  if (fieldName === 'email' || !fieldName) {
+    if (!values.email) {
+      errors.email = 'L\'email est requis';
+    } else if (!/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(values.email)) {
+      errors.email = 'L\'adresse email est invalide';
+    }
+  }
+  
+  if (fieldName === 'password' || !fieldName) {
+    if (!values.password) {
+      errors.password = 'Le mot de passe est requis';
+    }
+  }
+  
+  return errors;
+};
 
 const Login = () => {
-  // Utilisation d'un état unique pour le formulaire
-  const [formState, setFormState] = useState({
-    email: '',
-    password: '',
-    rememberMe: false
-  });
-  const [touched, setTouched] = useState({});
-  const [errors, setErrors] = useState({});
-  const [loading, setLoading] = useState(false);
-  const [serverError, setServerError] = useState('');
-  
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [serverError, setServerError] = useState('');
   
-  // Récupérer l'URL de redirection si elle existe
+  // URL de redirection après connexion réussie
   const redirectPath = location.state?.redirect || '/dashboard';
-
-  // Gestionnaire générique pour les changements de champ
-  const handleChange = useCallback((e) => {
-    const { name, value, type, checked } = e.target;
-    setFormState(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value
-    }));
-  }, []);
   
-  // Marquer un champ comme touché lorsqu'il perd le focus
-  const handleBlur = useCallback((e) => {
-    const { name } = e.target;
-    setTouched(prev => ({ ...prev, [name]: true }));
-  }, []);
+  // Initialisation du formulaire avec notre hook personnalisé
+  const {
+    values,
+    errors,
+    touched,
+    isSubmitting,
+    handleChange,
+    handleBlur,
+    handleSubmit,
+    fieldHasError,
+    setValues
+  } = useForm(
+    {
+      email: '',
+      password: '',
+      rememberMe: false
+    },
+    validateLoginForm
+  );
   
-  // Validation du formulaire
-  const validateForm = useCallback(() => {
-    const newErrors = {};
-    
-    // Valider l'email
-    if (!formState.email) {
-      newErrors.email = 'L\'email est requis';
-    } else if (!/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(formState.email)) {
-      newErrors.email = 'L\'adresse email est invalide';
-    }
-    
-    // Valider le mot de passe
-    if (!formState.password) {
-      newErrors.password = 'Le mot de passe est requis';
-    }
-    
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  }, [formState]);
-  
-  // Valider les champs individuels lorsqu'ils changent
-  useEffect(() => {
-    // Pour chaque champ qui a été touché, valider et mettre à jour les erreurs
-    if (touched.email) {
-      let emailError = '';
-      if (!formState.email) {
-        emailError = 'L\'email est requis';
-      } else if (!/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(formState.email)) {
-        emailError = 'L\'adresse email est invalide';
-      }
-      setErrors(prev => ({ ...prev, email: emailError }));
-    }
-    
-    if (touched.password) {
-      const passwordError = !formState.password ? 'Le mot de passe est requis' : '';
-      setErrors(prev => ({ ...prev, password: passwordError }));
-    }
-  }, [formState, touched]);
-  
-  // Soumettre le formulaire
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    // Marquer tous les champs comme touchés pour déclencher la validation
-    setTouched({
-      email: true,
-      password: true
-    });
-    
-    // Valider le formulaire
-    const isValid = validateForm();
-    
-    if (!isValid) {
-      return;
-    }
-    
-    setServerError('');
-    setLoading(true);
-    
-    try {
-      await login(formState.email, formState.password);
-      
-      // Enregistrer l'email dans le stockage local si "Se souvenir de moi" est coché
-      if (formState.rememberMe) {
-        localStorage.setItem('rememberedEmail', formState.email);
-      } else {
-        localStorage.removeItem('rememberedEmail');
-      }
-      
-      // Rediriger vers la page demandée ou le tableau de bord
-      navigate(redirectPath);
-    } catch (error) {
-      console.error('Erreur de connexion:', error);
-      
-      // Messages d'erreur spécifiques
-      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-        setServerError('Email ou mot de passe incorrect.');
-      } else if (error.code === 'auth/too-many-requests') {
-        setServerError('Trop de tentatives de connexion. Veuillez réessayer plus tard.');
-      } else if (error.code === 'auth/user-disabled') {
-        setServerError('Ce compte a été désactivé. Veuillez contacter le support.');
-      } else {
-        setServerError(error.message || 'Échec de la connexion. Veuillez réessayer.');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  // Charger l'email enregistré au montage du composant
+  // Charge l'email mémorisé au chargement
   useEffect(() => {
     const rememberedEmail = localStorage.getItem('rememberedEmail');
     if (rememberedEmail) {
-      setFormState(prev => ({
+      setValues(prev => ({
         ...prev,
         email: rememberedEmail,
         rememberMe: true
       }));
     }
-  }, []);
+  }, [setValues]);
   
-  // Afficher un message d'erreur pour un champ
-  const ErrorMessage = ({ name }) => {
-    if (!errors[name] || !touched[name]) return null;
-    
-    return (
-      <p className="mt-1 text-sm text-red-600">{errors[name]}</p>
-    );
-  };
-  
-  // Déterminer si un champ a une erreur
-  const fieldHasError = (name) => {
-    return touched[name] && errors[name];
+  // Gestion de la soumission du formulaire
+  const submitLogin = async (formValues) => {
+    try {
+      setServerError('');
+      await login(formValues.email, formValues.password);
+      
+      // Enregistrer l'email si "Se souvenir de moi" est coché
+      if (formValues.rememberMe) {
+        localStorage.setItem('rememberedEmail', formValues.email);
+      } else {
+        localStorage.removeItem('rememberedEmail');
+      }
+      
+      navigate(redirectPath);
+    } catch (error) {
+      console.error('Erreur de connexion:', error);
+      setServerError(translateErrorCode(error.code) || error.message || 'Échec de la connexion');
+    }
   };
   
   // Classes pour les champs de formulaire
@@ -159,7 +95,13 @@ const Login = () => {
         : 'border-white/10 focus:ring-blue-500'
     } rounded-lg w-full py-3 px-4 text-white leading-tight focus:outline-none focus:ring-2 focus:border-transparent`;
   };
-
+  
+  // Afficher un message d'erreur pour un champ
+  const ErrorMessage = ({ name }) => {
+    if (!errors[name] || !touched[name]) return null;
+    return <p className="mt-1 text-sm text-red-600">{errors[name]}</p>;
+  };
+  
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 to-blue-900 py-12 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
       <div className="max-w-md w-full bg-white/10 backdrop-blur-md rounded-xl shadow-xl overflow-hidden">
@@ -174,7 +116,7 @@ const Login = () => {
             </div>
           )}
           
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit(submitLogin)} className="space-y-6">
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-white mb-2">
                 Adresse e-mail
@@ -185,7 +127,7 @@ const Login = () => {
                 type="email"
                 autoComplete="email"
                 required
-                value={formState.email}
+                value={values.email}
                 onChange={handleChange}
                 onBlur={handleBlur}
                 className={getInputClasses('email')}
@@ -204,7 +146,7 @@ const Login = () => {
                 type="password"
                 autoComplete="current-password"
                 required
-                value={formState.password}
+                value={values.password}
                 onChange={handleChange}
                 onBlur={handleBlur}
                 className={getInputClasses('password')}
@@ -219,7 +161,7 @@ const Login = () => {
                   id="rememberMe"
                   name="rememberMe"
                   type="checkbox"
-                  checked={formState.rememberMe}
+                  checked={values.rememberMe}
                   onChange={handleChange}
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 />
@@ -238,12 +180,12 @@ const Login = () => {
             <div>
               <button
                 type="submit"
-                disabled={loading}
+                disabled={isSubmitting}
                 className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors ${
-                  loading ? 'opacity-70 cursor-not-allowed' : ''
+                  isSubmitting ? 'opacity-70 cursor-not-allowed' : ''
                 }`}
               >
-                {loading ? (
+                {isSubmitting ? (
                   <>
                     <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
