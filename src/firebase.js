@@ -3,14 +3,15 @@ import 'firebase/compat/auth';
 import 'firebase/compat/firestore';
 import 'firebase/compat/functions';
 
+// Utiliser des variables d'environnement pour sécuriser les clés Firebase
 const firebaseConfig = {
-    apiKey: "AIzaSyC4Jz3AnOLNy4y3phDwft_1qh2dKhU0HW0",
-    authDomain: "abona-8d0c8.firebaseapp.com",
-    projectId: "abona-8d0c8",
-    storageBucket: "abona-8d0c8.firebasestorage.app",
-    messagingSenderId: "232348280594",
-    appId: "1:232348280594:web:012430f40210fe5755f5cb",
-    measurementId: "G-R74P1Y89SE"
+    apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "AIzaSyC4Jz3AnOLNy4y3phDwft_1qh2dKhU0HW0",
+    authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || "abona-8d0c8.firebaseapp.com",
+    projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || "abona-8d0c8",
+    storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || "abona-8d0c8.firebasestorage.app",
+    messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || "232348280594",
+    appId: process.env.REACT_APP_FIREBASE_APP_ID || "1:232348280594:web:012430f40210fe5755f5cb",
+    measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID || "G-R74P1Y89SE"
 };
 
 // Initialize Firebase

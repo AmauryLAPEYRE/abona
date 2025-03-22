@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useSubscriptions } from '../../contexts/SubscriptionContext';
 import { firestore } from '../../firebase';
@@ -8,15 +8,21 @@ const AdminServiceForm = () => {
   const navigate = useNavigate();
   const { addService, updateService } = useSubscriptions();
   
+  // États pour les champs du formulaire
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [price, setPrice] = useState('');
   const [duration, setDuration] = useState('');
   const [category, setCategory] = useState('');
+  
+  // États pour la gestion du formulaire
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [isEdit, setIsEdit] = useState(false);
+  
+  // États pour la validation des champs
+  const [errors, setErrors] = useState({});
+  const [touched, setTouched] = useState({});
   
   // Catégories disponibles
   const categories = [
@@ -29,6 +35,112 @@ const AdminServiceForm = () => {
     'Autre'
   ];
   
+  // Marquer un champ comme "touché" lors de la modification
+  const handleBlur = (field) => {
+    setTouched(prev => ({ ...prev, [field]: true }));
+  };
+  
+  // Valider un champ spécifique
+  const validateField = useCallback((field, value) => {
+    let error = '';
+    
+    switch (field) {
+      case 'name':
+        if (!value.trim()) {
+          error = 'Le nom du service est requis';
+        } else if (value.length < 2) {
+          error = 'Le nom doit contenir au moins 2 caractères';
+        } else if (value.length > 50) {
+          error = 'Le nom ne doit pas dépasser 50 caractères';
+        }
+        break;
+        
+      case 'description':
+        if (!value.trim()) {
+          error = 'La description est requise';
+        } else if (value.length < 10) {
+          error = 'La description doit contenir au moins 10 caractères';
+        }
+        break;
+        
+      case 'imageUrl':
+        if (value && !value.match(/^(https?:\/\/)?([\w\-])+\.{1}([a-zA-Z]{2,63})([\/\w-]*)*\/?\??([^#\n\r]*)?#?([^\n\r]*)$/)) {
+          error = 'L\'URL de l\'image doit être valide';
+        }
+        break;
+        
+      case 'price':
+        if (!value) {
+          error = 'Le prix est requis';
+        } else if (isNaN(parseFloat(value)) || parseFloat(value) < 0) {
+          error = 'Le prix doit être un nombre positif';
+        }
+        break;
+        
+      case 'duration':
+        if (!value) {
+          error = 'La durée est requise';
+        } else if (isNaN(parseInt(value)) || parseInt(value) < 1) {
+          error = 'La durée doit être un nombre entier positif';
+        }
+        break;
+        
+      case 'category':
+        if (!value) {
+          error = 'La catégorie est requise';
+        }
+        break;
+        
+      default:
+        break;
+    }
+    
+    return error;
+  }, []);
+  
+  // Valider tous les champs
+  const validateForm = useCallback(() => {
+    const newErrors = {
+      name: validateField('name', name),
+      description: validateField('description', description),
+      imageUrl: validateField('imageUrl', imageUrl),
+      price: validateField('price', price),
+      duration: validateField('duration', duration),
+      category: validateField('category', category)
+    };
+    
+    setErrors(newErrors);
+    
+    // Le formulaire est valide si aucun champ n'a d'erreur
+    return !Object.values(newErrors).some(error => error);
+  }, [name, description, imageUrl, price, duration, category, validateField]);
+  
+  // Mettre à jour les erreurs lorsqu'un champ est modifié
+  useEffect(() => {
+    if (touched.name) setErrors(prev => ({ ...prev, name: validateField('name', name) }));
+  }, [name, touched.name, validateField]);
+  
+  useEffect(() => {
+    if (touched.description) setErrors(prev => ({ ...prev, description: validateField('description', description) }));
+  }, [description, touched.description, validateField]);
+  
+  useEffect(() => {
+    if (touched.imageUrl) setErrors(prev => ({ ...prev, imageUrl: validateField('imageUrl', imageUrl) }));
+  }, [imageUrl, touched.imageUrl, validateField]);
+  
+  useEffect(() => {
+    if (touched.price) setErrors(prev => ({ ...prev, price: validateField('price', price) }));
+  }, [price, touched.price, validateField]);
+  
+  useEffect(() => {
+    if (touched.duration) setErrors(prev => ({ ...prev, duration: validateField('duration', duration) }));
+  }, [duration, touched.duration, validateField]);
+  
+  useEffect(() => {
+    if (touched.category) setErrors(prev => ({ ...prev, category: validateField('category', category) }));
+  }, [category, touched.category, validateField]);
+  
+  // Charger les données du service en mode édition
   useEffect(() => {
     if (id && id !== 'new') {
       setIsEdit(true);
@@ -39,7 +151,7 @@ const AdminServiceForm = () => {
           const serviceDoc = await firestore.collection('services').doc(id).get();
           
           if (!serviceDoc.exists) {
-            setError("Service non trouvé");
+            setErrors(prev => ({ ...prev, form: "Service non trouvé" }));
             setLoading(false);
             return;
           }
@@ -53,7 +165,8 @@ const AdminServiceForm = () => {
           setCategory(serviceData.category || 'Autre');
           setLoading(false);
         } catch (err) {
-          setError("Erreur lors du chargement du service");
+          console.error("Erreur lors du chargement du service:", err);
+          setErrors(prev => ({ ...prev, form: "Erreur lors du chargement du service" }));
           setLoading(false);
         }
       };
@@ -62,11 +175,24 @@ const AdminServiceForm = () => {
     }
   }, [id]);
 
+  // Soumission du formulaire
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!name || !description || !price || !duration || !category) {
-      setError("Tous les champs obligatoires doivent être remplis");
+    // Marquer tous les champs comme touchés pour déclencher la validation
+    setTouched({
+      name: true,
+      description: true,
+      imageUrl: true,
+      price: true,
+      duration: true,
+      category: true
+    });
+    
+    // Valider le formulaire avant soumission
+    const isValid = validateForm();
+    
+    if (!isValid) {
       return;
     }
     
@@ -81,6 +207,7 @@ const AdminServiceForm = () => {
     
     try {
       setLoading(true);
+      setErrors({});
       
       if (isEdit) {
         await updateService(id, serviceData);
@@ -90,9 +217,19 @@ const AdminServiceForm = () => {
       
       navigate('/admin/services');
     } catch (err) {
-      setError(`Erreur lors de l'enregistrement: ${err.message}`);
+      console.error("Erreur lors de l'enregistrement:", err);
+      setErrors(prev => ({ ...prev, form: `Erreur lors de l'enregistrement: ${err.message}` }));
       setLoading(false);
     }
+  };
+
+  // Affichage du message d'erreur sous un champ
+  const ErrorMessage = ({ field }) => {
+    if (!errors[field] || !touched[field]) return null;
+    
+    return (
+      <p className="mt-1 text-sm text-red-600">{errors[field]}</p>
+    );
   };
 
   if (loading && isEdit) {
@@ -111,10 +248,10 @@ const AdminServiceForm = () => {
         </h1>
       </div>
       
-      {error && (
+      {errors.form && (
         <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6" role="alert">
           <p className="font-bold">Erreur</p>
-          <p>{error}</p>
+          <p>{errors.form}</p>
         </div>
       )}
       
@@ -128,12 +265,14 @@ const AdminServiceForm = () => {
               <input
                 type="text"
                 id="name"
-                className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                className={`shadow-sm ${errors.name && touched.name ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'focus:ring-blue-500 focus:border-blue-500'} block w-full sm:text-sm border-gray-300 rounded-md`}
                 placeholder="Ex: Netflix Premium"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                onBlur={() => handleBlur('name')}
                 required
               />
+              <ErrorMessage field="name" />
             </div>
             
             <div>
@@ -142,9 +281,10 @@ const AdminServiceForm = () => {
               </label>
               <select
                 id="category"
-                className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                className={`shadow-sm ${errors.category && touched.category ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'focus:ring-blue-500 focus:border-blue-500'} block w-full sm:text-sm border-gray-300 rounded-md`}
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
+                onBlur={() => handleBlur('category')}
                 required
               >
                 <option value="">Sélectionnez une catégorie</option>
@@ -152,6 +292,7 @@ const AdminServiceForm = () => {
                   <option key={cat} value={cat}>{cat}</option>
                 ))}
               </select>
+              <ErrorMessage field="category" />
             </div>
           </div>
           
@@ -162,12 +303,14 @@ const AdminServiceForm = () => {
             <textarea
               id="description"
               rows={4}
-              className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
+              className={`shadow-sm ${errors.description && touched.description ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'focus:ring-blue-500 focus:border-blue-500'} block w-full sm:text-sm border-gray-300 rounded-md`}
               placeholder="Description détaillée du service"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
+              onBlur={() => handleBlur('description')}
               required
             ></textarea>
+            <ErrorMessage field="description" />
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -179,18 +322,20 @@ const AdminServiceForm = () => {
                 <input
                   type="number"
                   id="price"
-                  className="focus:ring-blue-500 focus:border-blue-500 block w-full pl-3 pr-12 sm:text-sm border-gray-300 rounded-md"
+                  className={`${errors.price && touched.price ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'focus:ring-blue-500 focus:border-blue-500'} block w-full pl-3 pr-12 sm:text-sm border-gray-300 rounded-md`}
                   placeholder="0.00"
                   step="0.01"
                   min="0"
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
+                  onBlur={() => handleBlur('price')}
                   required
                 />
                 <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
                   <span className="text-gray-500 sm:text-sm">€</span>
                 </div>
               </div>
+              <ErrorMessage field="price" />
             </div>
             
             <div>
@@ -200,13 +345,15 @@ const AdminServiceForm = () => {
               <input
                 type="number"
                 id="duration"
-                className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                className={`shadow-sm ${errors.duration && touched.duration ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'focus:ring-blue-500 focus:border-blue-500'} block w-full sm:text-sm border-gray-300 rounded-md`}
                 placeholder="30"
                 min="1"
                 value={duration}
                 onChange={(e) => setDuration(e.target.value)}
+                onBlur={() => handleBlur('duration')}
                 required
               />
+              <ErrorMessage field="duration" />
             </div>
           </div>
           
@@ -217,11 +364,13 @@ const AdminServiceForm = () => {
             <input
               type="url"
               id="imageUrl"
-              className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
+              className={`shadow-sm ${errors.imageUrl && touched.imageUrl ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'focus:ring-blue-500 focus:border-blue-500'} block w-full sm:text-sm border-gray-300 rounded-md`}
               placeholder="https://exemple.com/image.jpg"
               value={imageUrl}
               onChange={(e) => setImageUrl(e.target.value)}
+              onBlur={() => handleBlur('imageUrl')}
             />
+            <ErrorMessage field="imageUrl" />
             <p className="mt-1 text-sm text-gray-500">
               Laissez vide pour utiliser une icône générée automatiquement
             </p>

@@ -1,39 +1,33 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useSubscriptions } from '../contexts/SubscriptionContext';
 import { useAuth } from '../contexts/AuthContext';
+import SubscriptionCard from '../components/SubscriptionCard';
 
 const Dashboard = () => {
   const { userSubscriptions, loading } = useSubscriptions();
   const { currentUser } = useAuth();
   const [activeTab, setActiveTab] = useState('active');
   
-  // Filtrer les abonnements actifs et expirés
-  const activeSubscriptions = userSubscriptions.filter(sub => {
-    const isExpired = new Date() > new Date(sub.expiryDate.toDate());
-    return !isExpired;
-  });
-  
-  const expiredSubscriptions = userSubscriptions.filter(sub => {
-    const isExpired = new Date() > new Date(sub.expiryDate.toDate());
-    return isExpired;
-  });
+  // Filtrer les abonnements actifs et expirés - memoizé pour éviter des recalculs inutiles
+  const { activeSubscriptions, expiredSubscriptions } = useMemo(() => {
+    const active = userSubscriptions.filter(sub => {
+      const isExpired = new Date() > new Date(sub.expiryDate.toDate());
+      return !isExpired;
+    });
+    
+    const expired = userSubscriptions.filter(sub => {
+      const isExpired = new Date() > new Date(sub.expiryDate.toDate());
+      return isExpired;
+    });
+    
+    return { activeSubscriptions: active, expiredSubscriptions: expired };
+  }, [userSubscriptions]);  
 
-  // Fonction pour générer des avatars aléatoires pour simuler d'autres utilisateurs
-  const generateRandomAvatars = (count) => {
-    const colors = ['bg-blue-500', 'bg-green-500', 'bg-yellow-500', 'bg-purple-500', 'bg-red-500', 'bg-indigo-500'];
-    const avatars = [];
-    
-    for (let i = 0; i < count; i++) {
-      const colorIndex = Math.floor(Math.random() * colors.length);
-      avatars.push({
-        color: colors[colorIndex],
-        initial: String.fromCharCode(65 + Math.floor(Math.random() * 26))
-      });
-    }
-    
-    return avatars;
-  };
+  // Gestionnaire pour changer d'onglet
+  const handleTabChange = useCallback((tab) => {
+    setActiveTab(tab);
+  }, []);
 
   if (loading) {
     return (
@@ -61,7 +55,7 @@ const Dashboard = () => {
                 ? 'bg-blue-100 text-blue-800' 
                 : 'text-gray-500 hover:bg-gray-100'
             }`}
-            onClick={() => setActiveTab('active')}
+            onClick={() => handleTabChange('active')}
           >
             Abonnements actifs
             <span className="ml-2 px-2 py-0.5 bg-blue-600 text-white text-xs rounded-full">
@@ -74,7 +68,7 @@ const Dashboard = () => {
                 ? 'bg-blue-100 text-blue-800' 
                 : 'text-gray-500 hover:bg-gray-100'
             }`}
-            onClick={() => setActiveTab('expired')}
+            onClick={() => handleTabChange('expired')}
           >
             Abonnements expirés
             <span className="ml-2 px-2 py-0.5 bg-gray-600 text-white text-xs rounded-full">
@@ -100,113 +94,13 @@ const Dashboard = () => {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {activeSubscriptions.map(subscription => {
-                    // Générer entre 1 et 4 avatars aléatoires pour simuler les autres utilisateurs
-                    const otherUsers = generateRandomAvatars(Math.floor(Math.random() * 3) + 1);
-                    
-                    return (
-                      <div 
-                        key={subscription.id} 
-                        className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow"
-                      >
-                        <div className="bg-gradient-to-r from-blue-600 to-purple-700 p-6 relative">
-                          <div className="flex items-center justify-between">
-                            <h3 className="text-xl font-bold text-white">{subscription.serviceName}</h3>
-                            <span className="bg-green-500 text-white text-xs px-2 py-1 rounded-full">Actif</span>
-                          </div>
-                          
-                          <p className="text-white/80 text-sm mt-1">{subscription.subscriptionName}</p>
-                          
-                          {/* Affichage des utilisateurs partageant cet abonnement */}
-                          <div className="mt-4">
-                            <p className="text-white/80 text-sm mb-2">Partagé avec:</p>
-                            <div className="flex -space-x-2">
-                              {/* Avatar de l'utilisateur actuel */}
-                              <div className="w-8 h-8 rounded-full bg-white text-blue-700 flex items-center justify-center font-bold text-sm ring-2 ring-white">
-                                {currentUser.displayName ? currentUser.displayName.charAt(0).toUpperCase() : 'U'}
-                              </div>
-                              
-                              {/* Avatars des autres utilisateurs */}
-                              {otherUsers.map((user, index) => (
-                                <div 
-                                  key={index} 
-                                  className={`w-8 h-8 rounded-full ${user.color} flex items-center justify-center font-bold text-sm text-white ring-2 ring-white`}
-                                >
-                                  {user.initial}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                        
-                        <div className="p-6">
-                          <div className="space-y-3 mb-4">
-                            {subscription.accessType === 'account' ? (
-                              <>
-                                <div>
-                                  <p className="text-sm text-gray-500">Email d'accès</p>
-                                  <div className="flex items-center justify-between">
-                                    <p className="font-medium">{subscription.email}</p>
-                                    <button 
-                                      onClick={() => {navigator.clipboard.writeText(subscription.email)}}
-                                      className="text-blue-600 hover:text-blue-800 text-xs"
-                                    >
-                                      Copier
-                                    </button>
-                                  </div>
-                                </div>
-                                
-                                <div>
-                                  <p className="text-sm text-gray-500">Mot de passe</p>
-                                  <div className="flex items-center justify-between">
-                                    <p className="font-medium">{subscription.password}</p>
-                                    <button 
-                                      onClick={() => {navigator.clipboard.writeText(subscription.password)}}
-                                      className="text-blue-600 hover:text-blue-800 text-xs"
-                                    >
-                                      Copier
-                                    </button>
-                                  </div>
-                                </div>
-                              </>
-                            ) : (
-                              <div>
-                                <p className="text-sm text-gray-500">Lien d'invitation</p>
-                                <div className="flex items-center justify-between">
-                                  <a 
-                                    href={subscription.invitationLink} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="text-blue-600 hover:text-blue-800 break-all text-sm"
-                                  >
-                                    {subscription.invitationLink}
-                                  </a>
-                                  <button 
-                                    onClick={() => {navigator.clipboard.writeText(subscription.invitationLink)}}
-                                    className="text-blue-600 hover:text-blue-800 text-xs ml-2 whitespace-nowrap"
-                                  >
-                                    Copier
-                                  </button>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                          
-                          <div className="flex items-center justify-between">
-                            <div className="text-sm text-gray-500">
-                              Expire le {new Date(subscription.expiryDate.toDate()).toLocaleDateString()}
-                            </div>
-                            <Link
-                              to={`/subscription/${subscription.id}`}
-                              className="text-blue-600 hover:text-blue-800 font-medium text-sm"
-                            >
-                              Détails
-                            </Link>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {activeSubscriptions.map(subscription => (
+                    <SubscriptionCard 
+                      key={subscription.id} 
+                      subscription={subscription}
+                      showDetails={true}
+                    />
+                  ))}
                 </div>
               )}
             </>
@@ -225,43 +119,14 @@ const Dashboard = () => {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {expiredSubscriptions.map(subscription => (
-                    <div 
+                    <SubscriptionCard 
                       key={subscription.id} 
-                      className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow opacity-70"
-                    >
-                      <div className="bg-gray-600 p-6">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h3 className="text-xl font-bold text-white">{subscription.serviceName}</h3>
-                            <p className="text-white/80 text-sm">{subscription.subscriptionName}</p>
-                          </div>
-                          <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full">Expiré</span>
-                        </div>
-                      </div>
-                      
-                      <div className="p-6">
-                        <div className="space-y-3 mb-4">
-                          {subscription.accessType === 'account' ? (
-                            <>
-                              <div>
-                                <p className="text-sm text-gray-500">Email d'accès</p>
-                                <p className="font-medium">{subscription.email}</p>
-                              </div>
-                              
-                              <div>
-                                <p className="text-sm text-gray-500">Mot de passe</p>
-                                <p className="font-medium">{subscription.password}</p>
-                              </div>
-                            </>
-                          ) : (
-                            <div>
-                              <p className="text-sm text-gray-500">Lien d'invitation</p>
-                              <p className="text-gray-600 break-all text-sm">{subscription.invitationLink}</p>
-                            </div>
-                          )}
-                        </div>
-                        
-                        <div className="flex items-center justify-between">
+                      subscription={subscription}
+                      showDetails={true}
+                      isCompact={true}
+                      className="opacity-70"
+                      renderActions={(subscription) => (
+                        <div className="flex justify-between items-center">
                           <div className="text-sm text-red-500">
                             Expiré le {new Date(subscription.expiryDate.toDate()).toLocaleDateString()}
                           </div>
@@ -272,8 +137,8 @@ const Dashboard = () => {
                             Renouveler
                           </Link>
                         </div>
-                      </div>
-                    </div>
+                      )}
+                    />
                   ))}
                 </div>
               )}

@@ -1,6 +1,39 @@
 import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
 import { auth, firestore } from '../firebase';
 
+// Fonction utilitaire pour traduire les codes d'erreur Firebase en messages d'erreur français
+const translateFirebaseError = (errorCode) => {
+  const errorMessages = {
+    // Erreurs d'authentification
+    'auth/email-already-in-use': 'Cette adresse email est déjà utilisée par un autre compte.',
+    'auth/invalid-email': 'L\'adresse email n\'est pas valide.',
+    'auth/user-disabled': 'Ce compte utilisateur a été désactivé.',
+    'auth/user-not-found': 'Aucun utilisateur ne correspond à cette adresse email.',
+    'auth/wrong-password': 'Le mot de passe est incorrect.',
+    'auth/weak-password': 'Le mot de passe est trop faible. Il doit contenir au moins 6 caractères.',
+    'auth/requires-recent-login': 'Cette opération est sensible et nécessite une authentification récente. Veuillez vous reconnecter.',
+    'auth/too-many-requests': 'Trop de tentatives de connexion. Veuillez réessayer plus tard.',
+    'auth/operation-not-allowed': 'Cette opération n\'est pas autorisée.',
+    'auth/account-exists-with-different-credential': 'Un compte existe déjà avec la même adresse email mais des identifiants de connexion différents.',
+    'auth/invalid-credential': 'Les identifiants fournis sont incorrects ou ont expiré.',
+    'auth/invalid-verification-code': 'Le code de vérification est invalide.',
+    'auth/invalid-verification-id': 'L\'identifiant de vérification est invalide.',
+    'auth/expired-action-code': 'Le code d\'action a expiré.',
+    'auth/invalid-action-code': 'Le code d\'action est invalide.',
+    'auth/network-request-failed': 'La connexion réseau a échoué. Vérifiez votre connexion internet.',
+    
+    // Erreurs Firestore
+    'permission-denied': 'Vous n\'avez pas les autorisations nécessaires pour effectuer cette action.',
+    'not-found': 'Le document demandé n\'existe pas.',
+    'already-exists': 'Le document que vous essayez de créer existe déjà.',
+    
+    // Erreurs génériques
+    'internal': 'Une erreur interne s\'est produite. Veuillez réessayer.'
+  };
+  
+  return errorMessages[errorCode] || `Une erreur s'est produite (${errorCode}).`;
+};
+
 // Création du contexte d'authentification
 const AuthContext = createContext();
 
@@ -17,6 +50,12 @@ export function AuthProvider({ children }) {
 
   // Fonction d'inscription avec meilleure gestion des erreurs
   const register = useCallback(async (email, password, name) => {
+    if (!email || !password || !name) {
+      const errorMessage = "Tous les champs sont requis.";
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    }
+    
     try {
       setError(null);
       // Création de l'utilisateur dans Firebase Auth
@@ -36,16 +75,7 @@ export function AuthProvider({ children }) {
       return result.user;
     } catch (error) {
       // Traduction des erreurs Firebase pour l'utilisateur
-      let errorMessage = 'Échec de la création du compte';
-      
-      if (error.code === 'auth/email-already-in-use') {
-        errorMessage = 'Cette adresse email est déjà utilisée';
-      } else if (error.code === 'auth/invalid-email') {
-        errorMessage = 'Adresse email invalide';
-      } else if (error.code === 'auth/weak-password') {
-        errorMessage = 'Le mot de passe est trop faible';
-      }
-      
+      const errorMessage = translateFirebaseError(error.code) || 'Échec de la création du compte.';
       setError(errorMessage);
       throw new Error(errorMessage);
     }
@@ -53,21 +83,21 @@ export function AuthProvider({ children }) {
 
   // Fonction de connexion avec meilleure gestion des erreurs
   const login = useCallback(async (email, password) => {
+    if (!email || !password) {
+      const errorMessage = "L'email et le mot de passe sont requis.";
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    }
+    
     try {
       setError(null);
       return await auth.signInWithEmailAndPassword(email, password);
     } catch (error) {
-      // Traduction des erreurs Firebase pour l'utilisateur
-      let errorMessage = 'Échec de la connexion';
+      // Pour des raisons de sécurité, on ne précise pas si c'est le mot de passe ou l'email qui est incorrect
+      let errorMessage = 'Email ou mot de passe incorrect.';
       
-      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-        errorMessage = 'Email ou mot de passe incorrect';
-      } else if (error.code === 'auth/invalid-email') {
-        errorMessage = 'Adresse email invalide';
-      } else if (error.code === 'auth/user-disabled') {
-        errorMessage = 'Ce compte a été désactivé';
-      } else if (error.code === 'auth/too-many-requests') {
-        errorMessage = 'Trop de tentatives de connexion. Veuillez réessayer plus tard';
+      if (error.code !== 'auth/wrong-password' && error.code !== 'auth/user-not-found') {
+        errorMessage = translateFirebaseError(error.code) || 'Échec de la connexion.';
       }
       
       setError(errorMessage);
@@ -81,25 +111,26 @@ export function AuthProvider({ children }) {
       setError(null);
       await auth.signOut();
     } catch (error) {
-      setError('Échec de la déconnexion');
-      throw error;
+      const errorMessage = 'Échec de la déconnexion. Veuillez réessayer.';
+      setError(errorMessage);
+      throw new Error(errorMessage);
     }
   }, []);
 
   // Fonction pour réinitialiser le mot de passe
   const resetPassword = useCallback(async (email) => {
+    if (!email) {
+      const errorMessage = "L'adresse email est requise.";
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    }
+    
     try {
       setError(null);
       await auth.sendPasswordResetEmail(email);
+      return true;
     } catch (error) {
-      let errorMessage = 'Échec de la réinitialisation du mot de passe';
-      
-      if (error.code === 'auth/user-not-found') {
-        errorMessage = 'Aucun compte ne correspond à cette adresse email';
-      } else if (error.code === 'auth/invalid-email') {
-        errorMessage = 'Adresse email invalide';
-      }
-      
+      const errorMessage = translateFirebaseError(error.code) || 'Échec de la réinitialisation du mot de passe.';
       setError(errorMessage);
       throw new Error(errorMessage);
     }
@@ -112,43 +143,96 @@ export function AuthProvider({ children }) {
       
       // Vérifier si l'utilisateur est connecté
       if (!currentUser) {
-        throw new Error('Aucun utilisateur connecté');
+        throw new Error('Vous devez être connecté pour effectuer cette action.');
       }
       
-      // Mettre à jour le profil dans Firebase Auth
+      const updates = {
+        updatedAt: new Date()
+      };
+      
+      // Mettre à jour le profil dans Firebase Auth si nécessaire
       if (userData.displayName) {
         await currentUser.updateProfile({ displayName: userData.displayName });
+        updates.name = userData.displayName;
       }
       
-      // Mettre à jour les données dans Firestore
-      const userRef = firestore.collection('users').doc(currentUser.uid);
-      const updateData = {};
-      
-      if (userData.name) updateData.name = userData.name;
+      // Mettre à jour l'email si nécessaire
       if (userData.email && userData.email !== currentUser.email) {
-        // Si l'email change, il faut également le mettre à jour dans Firebase Auth
-        await currentUser.updateEmail(userData.email);
-        updateData.email = userData.email;
+        try {
+          // Cette opération peut nécessiter une reconnexion récente
+          await currentUser.updateEmail(userData.email);
+          updates.email = userData.email;
+        } catch (error) {
+          if (error.code === 'auth/requires-recent-login') {
+            throw new Error('Pour des raisons de sécurité, veuillez vous reconnecter avant de changer votre adresse email.');
+          } else {
+            throw error;
+          }
+        }
+      }
+      
+      // Mettre à jour les autres champs dans Firestore
+      if (userData.name) {
+        updates.name = userData.name;
       }
       
       // Seulement mettre à jour si des données ont changé
-      if (Object.keys(updateData).length > 0) {
-        await userRef.update({
-          ...updateData,
-          updatedAt: new Date()
-        });
+      if (Object.keys(updates).length > 1) { // Plus de 1 car updatedAt est toujours présent
+        await firestore.collection('users').doc(currentUser.uid).update(updates);
       }
       
       return true;
     } catch (error) {
-      let errorMessage = 'Échec de la mise à jour du profil';
-      
-      if (error.code === 'auth/requires-recent-login') {
-        errorMessage = 'Veuillez vous reconnecter pour effectuer cette action';
-      }
-      
+      const errorMessage = translateFirebaseError(error.code) || error.message || 'Échec de la mise à jour du profil.';
       setError(errorMessage);
       throw new Error(errorMessage);
+    }
+  }, [currentUser]);
+
+  // Fonction pour mettre à jour le mot de passe de l'utilisateur
+  const updatePassword = useCallback(async (currentPassword, newPassword) => {
+    if (!currentPassword || !newPassword) {
+      const errorMessage = "Les deux mots de passe sont requis.";
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    }
+    
+    if (newPassword.length < 6) {
+      const errorMessage = "Le nouveau mot de passe doit contenir au moins 6 caractères.";
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    }
+    
+    try {
+      setError(null);
+      
+      // Vérifier si l'utilisateur est connecté
+      if (!currentUser) {
+        throw new Error('Vous devez être connecté pour effectuer cette action.');
+      }
+      
+      // Vérifier le mot de passe actuel en essayant de se reconnecter
+      const credential = auth.EmailAuthProvider.credential(
+        currentUser.email,
+        currentPassword
+      );
+      
+      await currentUser.reauthenticateWithCredential(credential);
+      
+      // Mettre à jour le mot de passe
+      await currentUser.updatePassword(newPassword);
+      
+      return true;
+    } catch (error) {
+      if (error.code === 'auth/wrong-password') {
+        const errorMessage = "Le mot de passe actuel est incorrect.";
+        setError(errorMessage);
+        throw new Error(errorMessage);
+      } else {
+        const errorMessage = translateFirebaseError(error.code) || 'Échec de la mise à jour du mot de passe.';
+        setError(errorMessage);
+        throw new Error(errorMessage);
+      }
     }
   }, [currentUser]);
 
@@ -203,6 +287,7 @@ export function AuthProvider({ children }) {
     logout,
     resetPassword,
     updateProfile,
+    updatePassword,
     loading,
     error,
     clearError: () => setError(null)

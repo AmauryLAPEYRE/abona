@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { firestore } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -19,8 +19,8 @@ const ServiceDetailsPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
-  // Couleurs de fond pour différents services (à stocker en base de données à terme)
-  const serviceBgColors = {
+  // Couleurs de fond pour différents services (memoized)
+  const serviceBgColors = useMemo(() => ({
     'netflix': '#000000',
     'spotify': '#1DB954',
     'disneyplus': '#022359',
@@ -29,15 +29,15 @@ const ServiceDetailsPage = () => {
     'amazonprime': '#00A8E1',
     'appletv': '#000000',
     'default': '#3B82F6' // bleu par défaut
-  };
+  }), []);
   
-  // Obtenir la clé du service pour les couleurs (en minuscules, sans espaces)
-  const getServiceKey = (serviceName) => {
+  // Obtenir la clé du service pour les couleurs (memoized)
+  const getServiceKey = useCallback((serviceName) => {
     return serviceName?.toLowerCase().replace(/\s+/g, '') || 'default';
-  };
+  }, []);
   
-  // Obtenir la couleur de fond pour le service actuel
-  const getServiceBgColor = () => {
+  // Obtenir la couleur de fond pour le service actuel (memoized)
+  const getServiceBgColor = useCallback(() => {
     // Vérifier si une couleur est définie dans les métadonnées du service
     if (service?.bgColor) {
       return service.bgColor;
@@ -46,11 +46,15 @@ const ServiceDetailsPage = () => {
     // Sinon essayer de trouver une couleur prédéfinie basée sur le nom du service
     const serviceKey = getServiceKey(service?.name);
     return serviceBgColors[serviceKey] || serviceBgColors.default;
-  };
+  }, [service, getServiceKey, serviceBgColors]);
 
+  // Charger les données du service et des abonnements disponibles
   useEffect(() => {
     const fetchData = async () => {
       try {
+        setLoading(true);
+        setError(null);
+        
         // Récupérer les informations du service
         const serviceDoc = await firestore.collection('services').doc(serviceId).get();
         
@@ -69,17 +73,20 @@ const ServiceDetailsPage = () => {
         
         // Récupérer les abonnements disponibles
         const availableSubs = await getAvailableSubscriptions(serviceId);
-        setSubscriptions(availableSubs);
         
-        // Sélectionner le premier abonnement par défaut
-        if (availableSubs.length > 0) {
+        if (availableSubs.length === 0) {
+          console.log("Aucun abonnement disponible pour ce service");
+          // Pas d'erreur, mais on affiche un message à l'utilisateur dans l'UI
+        } else {
+          // Sélectionner le premier abonnement par défaut
           setSelectedSubscription(availableSubs[0]);
         }
         
+        setSubscriptions(availableSubs);
         setLoading(false);
       } catch (err) {
         console.error("Erreur lors du chargement des données:", err);
-        setError("Erreur lors du chargement des données");
+        setError(err.message || "Erreur lors du chargement des données");
         setLoading(false);
       }
     };
@@ -87,7 +94,8 @@ const ServiceDetailsPage = () => {
     fetchData();
   }, [serviceId, getAvailableSubscriptions]);
 
-  const handleSubscribe = () => {
+  // Fonction pour gérer la souscription
+  const handleSubscribe = useCallback(() => {
     if (!currentUser) {
       navigate('/login', { state: { redirect: `/service/${serviceId}` } });
       return;
@@ -100,11 +108,35 @@ const ServiceDetailsPage = () => {
     
     const duration = isRecurring ? 30 : customDuration;
     navigate(`/checkout/${serviceId}/${selectedSubscription.id}?duration=${duration}&recurring=${isRecurring}`);
-  };
+  }, [currentUser, serviceId, selectedSubscription, isRecurring, customDuration, navigate]);
   
+  // Gérer la modification de la durée
+  const handleDurationChange = useCallback((e) => {
+    setCustomDuration(parseInt(e.target.value));
+  }, []);
+  
+  // Gérer la modification du type d'abonnement
+  const handleSubscriptionTypeChange = useCallback((isRecur) => {
+    setIsRecurring(isRecur);
+  }, []);
+  
+  // Calculer le prix proratisé (memoized)
+  const calculatedPrice = useMemo(() => {
+    if (!selectedSubscription) return 0;
+    
+    return isRecurring
+      ? selectedSubscription.price
+      : calculateProRatedPrice(selectedSubscription.price, customDuration);
+  }, [selectedSubscription, isRecurring, customDuration, calculateProRatedPrice]);
+  
+  // Obtenir la couleur de fond
+  const bgColor = useMemo(() => getServiceBgColor(), [getServiceBgColor]);
+  // Générer des couleurs assombries pour les dégradés si nécessaire
+  const darkerBgColor = useMemo(() => bgColor === '#000000' ? '#111111' : bgColor, [bgColor]);
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-12 px-4 flex justify-center">
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-12 px-4 flex justify-center items-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
       </div>
     );
@@ -138,11 +170,6 @@ const ServiceDetailsPage = () => {
       </div>
     );
   }
-
-  // Obtenir la couleur de fond du service
-  const bgColor = getServiceBgColor();
-  // Générer des couleurs assombries pour les dégradés si nécessaire
-  const darkerBgColor = bgColor === '#000000' ? '#111111' : bgColor;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-12 px-4">
@@ -200,7 +227,7 @@ const ServiceDetailsPage = () => {
                 </div>
                 <div className="ml-3">
                   <p className="text-sm text-yellow-700">
-                    Aucun abonnement disponible pour le moment.
+                    Aucun abonnement disponible pour le moment. Veuillez revenir plus tard.
                   </p>
                 </div>
               </div>
@@ -289,7 +316,7 @@ const ServiceDetailsPage = () => {
                       name="subscription-type"
                       type="radio"
                       checked={isRecurring}
-                      onChange={() => setIsRecurring(true)}
+                      onChange={() => handleSubscriptionTypeChange(true)}
                       className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
                     />
                     <label htmlFor="recurring" className="ml-2 block text-sm font-medium text-gray-700">
@@ -304,7 +331,7 @@ const ServiceDetailsPage = () => {
                       name="subscription-type"
                       type="radio"
                       checked={!isRecurring}
-                      onChange={() => setIsRecurring(false)}
+                      onChange={() => handleSubscriptionTypeChange(false)}
                       className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
                     />
                     <label htmlFor="one-time" className="ml-2 block text-sm font-medium text-gray-700">
@@ -325,7 +352,7 @@ const ServiceDetailsPage = () => {
                           min="2"
                           max="30"
                           value={customDuration}
-                          onChange={(e) => setCustomDuration(parseInt(e.target.value))}
+                          onChange={handleDurationChange}
                           className="w-full mr-4"
                         />
                         <span className="text-sm font-medium w-16 text-center">{customDuration} jours</span>
@@ -351,7 +378,7 @@ const ServiceDetailsPage = () => {
                         <div className="flex justify-between mt-1">
                           <span className="text-gray-700">Prix pour {customDuration} jours:</span>
                           <span className="font-bold text-blue-600">
-                            {calculateProRatedPrice(selectedSubscription.price, customDuration)} €
+                            {calculatedPrice.toFixed(2)} €
                           </span>
                         </div>
                       </>
@@ -372,7 +399,7 @@ const ServiceDetailsPage = () => {
                   >
                     {isRecurring 
                       ? `S'abonner mensuellement à ${selectedSubscription.price.toFixed(2)} € / mois` 
-                      : `Acheter pour ${customDuration} jours à ${calculateProRatedPrice(selectedSubscription.price, customDuration)} €`}
+                      : `Acheter pour ${customDuration} jours à ${calculatedPrice.toFixed(2)} €`}
                   </button>
                 </div>
               </div>

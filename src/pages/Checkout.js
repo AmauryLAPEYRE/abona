@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { useStripe as useStripeContext } from '../contexts/StripeContext';
@@ -9,10 +9,13 @@ import { firestore } from '../firebase';
 const Checkout = () => {
   const { serviceId, subscriptionId } = useParams();
   const location = useLocation();
-  const duration = parseInt(new URLSearchParams(location.search).get('duration') || '30');
-  const isRecurring = new URLSearchParams(location.search).get('recurring') === 'true';
-  
   const navigate = useNavigate();
+  
+  // Récupérer les paramètres de l'URL
+  const searchParams = new URLSearchParams(location.search);
+  const duration = parseInt(searchParams.get('duration') || '30');
+  const isRecurring = searchParams.get('recurring') === 'true';
+  
   const { currentUser } = useAuth();
   const { createPaymentIntent, confirmPayment, confirmRecurringPayment, processing } = useStripeContext();
   const { purchaseSubscription, calculateProRatedPrice } = useSubscriptions();
@@ -23,15 +26,46 @@ const Checkout = () => {
   const [clientSecret, setClientSecret] = useState('');
   const [cardComplete, setCardComplete] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [paymentProcessing, setPaymentProcessing] = useState(false);
   const [proratedPrice, setProratedPrice] = useState(0);
   const [isSetupIntent, setIsSetupIntent] = useState(false);
   
   const stripe = useStripe();
   const elements = useElements();
 
+  // Vérifier si l'abonnement est toujours disponible
+  const checkSubscriptionAvailability = useCallback(async () => {
+    try {
+      // Vérifier si l'abonnement existe et a des places disponibles
+      const subscriptionDoc = await firestore
+        .collection('services')
+        .doc(serviceId)
+        .collection('subscriptions')
+        .doc(subscriptionId)
+        .get();
+      
+      if (!subscriptionDoc.exists) {
+        throw new Error("Cet abonnement n'existe plus.");
+      }
+      
+      const subscriptionData = subscriptionDoc.data();
+      
+      if (subscriptionData.currentUsers >= subscriptionData.maxUsers) {
+        throw new Error("Cet abonnement est complet. Veuillez en choisir un autre.");
+      }
+      
+      return true;
+    } catch (err) {
+      setError(err.message);
+      return false;
+    }
+  }, [serviceId, subscriptionId]);
+
   useEffect(() => {
     const fetchData = async () => {
       try {
+        setLoading(true);
+        
         // Récupérer les informations du service
         const serviceDoc = await firestore.collection('services').doc(serviceId).get();
         
@@ -109,8 +143,18 @@ const Checkout = () => {
     event.preventDefault();
     
     if (!stripe || !elements || !cardComplete || !clientSecret) {
+      setError("Veuillez remplir correctement les informations de carte.");
       return;
     }
+    
+    // Vérifier une nouvelle fois si l'abonnement est disponible
+    const isAvailable = await checkSubscriptionAvailability();
+    if (!isAvailable) {
+      return;
+    }
+    
+    setPaymentProcessing(true);
+    setError(null);
     
     const cardElement = elements.getElement(CardElement);
     
@@ -129,6 +173,7 @@ const Checkout = () => {
         
         if (setupError) {
           setError(`Erreur de configuration: ${setupError.message}`);
+          setPaymentProcessing(false);
           return;
         }
         
@@ -150,10 +195,12 @@ const Checkout = () => {
               } 
             });
           } else {
-            setError('Échec de la configuration de l\'abonnement récurrent');
+            setError('Échec de la configuration de l\'abonnement récurrent. Veuillez réessayer.');
+            setPaymentProcessing(false);
           }
         } catch (err) {
           setError(`Erreur lors de la finalisation: ${err.message}`);
+          setPaymentProcessing(false);
         }
       } else {
         // Traiter un paiement unique
@@ -169,11 +216,19 @@ const Checkout = () => {
         
         if (error) {
           setError(`Erreur de paiement: ${error.message}`);
+          setPaymentProcessing(false);
           return;
         }
         
         if (paymentIntent.status === 'succeeded') {
           try {
+            // Vérifier une dernière fois la disponibilité avant d'enregistrer
+            const isStillAvailable = await checkSubscriptionAvailability();
+            if (!isStillAvailable) {
+              setPaymentProcessing(false);
+              return;
+            }
+            
             // Enregistrement de l'abonnement pour l'utilisateur
             const result = await purchaseSubscription(
               serviceId, 
@@ -197,12 +252,22 @@ const Checkout = () => {
               } 
             });
           } catch (err) {
-            setError(`Erreur lors de la finalisation: ${err.message}`);
+            // Gestion des erreurs spécifiques
+            if (err.message && err.message.includes('complet')) {
+              setError("Cet abonnement est maintenant complet. Votre paiement a été effectué mais vous allez être remboursé automatiquement. Veuillez choisir un autre abonnement.");
+            } else {
+              setError(`Erreur lors de la finalisation: ${err.message}`);
+            }
+            setPaymentProcessing(false);
           }
+        } else {
+          setError("Le statut du paiement est indéterminé. Veuillez vérifier votre compte ou contacter le support.");
+          setPaymentProcessing(false);
         }
       }
     } catch (err) {
       setError(`Une erreur est survenue: ${err.message}`);
+      setPaymentProcessing(false);
     }
   };
 
@@ -233,10 +298,10 @@ const Checkout = () => {
               <p>{error}</p>
             </div>
             <Link 
-              to="/" 
+              to="/services" 
               className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
             >
-              Retour à l'accueil
+              Retour aux services
             </Link>
           </div>
         </div>
@@ -382,10 +447,10 @@ const Checkout = () => {
               
               <button
                 type="submit"
-                disabled={!stripe || !clientSecret || processing || !cardComplete}
+                disabled={paymentProcessing || processing || !cardComplete || !stripe || !clientSecret}
                 className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {processing ? (
+                {paymentProcessing || processing ? (
                   <>
                     <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>

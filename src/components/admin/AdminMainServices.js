@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { firestore } from '../../firebase';
 
@@ -7,61 +7,96 @@ const AdminMainServices = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState('name');
+  const [sortOrder, setSortOrder] = useState('asc');
+  const [selectedCategory, setSelectedCategory] = useState('Tous');
+  const [categories, setCategories] = useState(['Tous']);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
 
-  // Filtrer les services en fonction du terme de recherche
-  const filteredServices = services.filter(service => 
-    service.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    service.description.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  useEffect(() => {
-    const fetchServices = async () => {
-      try {
-        const servicesSnapshot = await firestore.collection('services').get();
-        
-        const servicesData = await Promise.all(servicesSnapshot.docs.map(async (doc) => {
-          const service = {
-            id: doc.id,
-            ...doc.data()
-          };
-          
-          // Récupérer le nombre d'abonnements pour ce service
-          const subscriptionsSnapshot = await firestore
-            .collection('services')
-            .doc(doc.id)
-            .collection('subscriptions')
-            .get();
-          
-          service.subscriptionCount = subscriptionsSnapshot.size;
-          
-          // Calculer le nombre total d'utilisateurs pour ce service
-          let totalUsers = 0;
-          subscriptionsSnapshot.docs.forEach(subDoc => {
-            const subData = subDoc.data();
-            totalUsers += (subData.currentUsers || 0);
-          });
-          
-          service.totalUsers = totalUsers;
-          
-          return service;
-        }));
-        
-        setServices(servicesData);
-        setLoading(false);
-      } catch (err) {
-        console.error("Erreur lors du chargement des services:", err);
-        setError("Erreur lors du chargement des services");
-        setLoading(false);
+  // Filtrer et trier les services
+  const filteredAndSortedServices = services
+    .filter(service => {
+      const matchesSearch = service.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          service.description.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesCategory = selectedCategory === 'Tous' || service.category === selectedCategory;
+      return matchesSearch && matchesCategory;
+    })
+    .sort((a, b) => {
+      let comparison = 0;
+      if (sortBy === 'name') {
+        comparison = a.name.localeCompare(b.name);
+      } else if (sortBy === 'category') {
+        comparison = (a.category || '').localeCompare(b.category || '');
+      } else if (sortBy === 'subscriptionCount') {
+        comparison = (a.subscriptionCount || 0) - (b.subscriptionCount || 0);
+      } else if (sortBy === 'totalUsers') {
+        comparison = (a.totalUsers || 0) - (b.totalUsers || 0);
       }
-    };
-    
-    fetchServices();
+      
+      return sortOrder === 'asc' ? comparison : -comparison;
+    });
+
+  // Charger les services
+  const fetchServices = useCallback(async () => {
+    try {
+      setLoading(true);
+      const servicesSnapshot = await firestore.collection('services').get();
+      
+      // Extraire les catégories uniques
+      const uniqueCategories = new Set(['Tous']);
+      
+      // Récupérer tous les services avec leurs stats
+      const servicesData = await Promise.all(servicesSnapshot.docs.map(async (doc) => {
+        const service = {
+          id: doc.id,
+          ...doc.data()
+        };
+        
+        // Ajouter la catégorie à l'ensemble des catégories uniques
+        if (service.category) {
+          uniqueCategories.add(service.category);
+        }
+        
+        // Récupérer le nombre d'abonnements pour ce service
+        const subscriptionsSnapshot = await firestore
+          .collection('services')
+          .doc(doc.id)
+          .collection('subscriptions')
+          .get();
+        
+        service.subscriptionCount = subscriptionsSnapshot.size;
+        
+        // Calculer le nombre total d'utilisateurs pour ce service
+        let totalUsers = 0;
+        subscriptionsSnapshot.docs.forEach(subDoc => {
+          const subData = subDoc.data();
+          totalUsers += (subData.currentUsers || 0);
+        });
+        
+        service.totalUsers = totalUsers;
+        
+        return service;
+      }));
+      
+      setServices(servicesData);
+      setCategories(Array.from(uniqueCategories));
+      setError(null);
+    } catch (err) {
+      console.error("Erreur lors du chargement des services:", err);
+      setError(err.message || "Erreur lors du chargement des services");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => {
+    fetchServices();
+  }, [fetchServices]);
+
+  // Supprimer un service
   const handleDelete = async (serviceId) => {
-    if (!window.confirm("Êtes-vous sûr de vouloir supprimer ce service ? Tous les abonnements associés seront également supprimés.")) {
-      return;
-    }
+    // Fermer la boîte de dialogue de confirmation
+    setShowDeleteConfirm(null);
     
     try {
       setLoading(true);
@@ -96,6 +131,33 @@ const AdminMainServices = () => {
     }
   };
 
+  // Changer le tri
+  const handleSortChange = (column) => {
+    if (sortBy === column) {
+      // Si on clique sur la même colonne, on inverse l'ordre
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      // Sinon, on trie par la nouvelle colonne en ordre ascendant
+      setSortBy(column);
+      setSortOrder('asc');
+    }
+  };
+
+  // Icône de tri
+  const SortIcon = ({ column }) => {
+    if (sortBy !== column) return null;
+    
+    return sortOrder === 'asc' ? (
+      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 inline-block ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+      </svg>
+    ) : (
+      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 inline-block ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+      </svg>
+    );
+  };
+
   if (loading && services.length === 0) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -106,8 +168,8 @@ const AdminMainServices = () => {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Gestion des services principaux</h1>
+      <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 gap-4">
+        <h1 className="text-2xl font-bold text-gray-800">Gestion des services</h1>
         <Link 
           to="/admin/services/new" 
           className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
@@ -121,14 +183,33 @@ const AdminMainServices = () => {
       
       {error && (
         <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6" role="alert">
-          <p className="font-bold">Erreur</p>
-          <p>{error}</p>
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-red-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="font-bold">Erreur</p>
+              <p>{error}</p>
+            </div>
+          </div>
+          <div className="mt-3">
+            <button 
+              onClick={fetchServices}
+              className="text-sm text-red-700 hover:text-red-900 font-medium underline"
+            >
+              Réessayer
+            </button>
+          </div>
         </div>
       )}
       
       <div className="bg-white shadow rounded-lg overflow-hidden mb-6">
-        <div className="p-4 border-b border-gray-200">
-          <div className="relative">
+        {/* Barre d'actions */}
+        <div className="p-4 border-b border-gray-200 flex flex-col md:flex-row md:items-center gap-4">
+          {/* Recherche */}
+          <div className="relative flex-1">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <svg className="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
                 <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
@@ -142,26 +223,55 @@ const AdminMainServices = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
+          
+          {/* Filtre par catégorie */}
+          <div className="w-full md:w-48">
+            <select
+              className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+            >
+              {categories.map(category => (
+                <option key={category} value={category}>{category}</option>
+              ))}
+            </select>
+          </div>
+          
+          {/* Bouton d'actualisation */}
+          <button
+            onClick={fetchServices}
+            className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="-ml-0.5 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Actualiser
+          </button>
         </div>
         
-        {filteredServices.length === 0 ? (
+        {filteredAndSortedServices.length === 0 ? (
           <div className="text-center py-12">
             <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <h3 className="mt-2 text-sm font-medium text-gray-900">Aucun service trouvé</h3>
             <p className="mt-1 text-sm text-gray-500">
-              {searchTerm 
-                ? `Aucun résultat pour "${searchTerm}". Essayez avec d'autres termes.` 
+              {searchTerm || selectedCategory !== 'Tous'
+                ? `Aucun résultat pour votre recherche. Essayez avec d'autres termes ou filtres.` 
                 : "Commencez par ajouter un nouveau service."}
             </p>
-            {searchTerm ? (
-              <button
-                className="mt-4 text-sm text-blue-600 hover:text-blue-500"
-                onClick={() => setSearchTerm('')}
-              >
-                Effacer la recherche
-              </button>
+            {(searchTerm || selectedCategory !== 'Tous') ? (
+              <div className="mt-4 flex space-x-4 justify-center">
+                <button
+                  className="text-sm text-blue-600 hover:text-blue-500"
+                  onClick={() => {
+                    setSearchTerm('');
+                    setSelectedCategory('Tous');
+                  }}
+                >
+                  Effacer les filtres
+                </button>
+              </div>
             ) : (
               <div className="mt-6">
                 <Link
@@ -181,17 +291,37 @@ const AdminMainServices = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th 
+                    scope="col" 
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                    onClick={() => handleSortChange('name')}
+                  >
                     Service
+                    <SortIcon column="name" />
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th 
+                    scope="col" 
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hidden sm:table-cell"
+                    onClick={() => handleSortChange('category')}
+                  >
                     Catégorie
+                    <SortIcon column="category" />
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th 
+                    scope="col" 
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hidden lg:table-cell"
+                    onClick={() => handleSortChange('subscriptionCount')}
+                  >
                     Abonnements
+                    <SortIcon column="subscriptionCount" />
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th 
+                    scope="col" 
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hidden lg:table-cell"
+                    onClick={() => handleSortChange('totalUsers')}
+                  >
                     Utilisateurs
+                    <SortIcon column="totalUsers" />
                   </th>
                   <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Actions
@@ -199,7 +329,7 @@ const AdminMainServices = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredServices.map(service => (
+                {filteredAndSortedServices.map(service => (
                   <tr key={service.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
@@ -214,11 +344,11 @@ const AdminMainServices = () => {
                         </div>
                         <div className="ml-4">
                           <div className="text-sm font-medium text-gray-900">{service.name}</div>
-                          <div className="text-sm text-gray-500 line-clamp-1">{service.description}</div>
+                          <div className="text-sm text-gray-500 line-clamp-1 max-w-xs">{service.description}</div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-4 whitespace-nowrap hidden sm:table-cell">
                       {service.category ? (
                         <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
                           {service.category}
@@ -227,10 +357,10 @@ const AdminMainServices = () => {
                         <span className="text-sm text-gray-500">-</span>
                       )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-4 whitespace-nowrap hidden lg:table-cell">
                       <div className="text-sm text-gray-900">{service.subscriptionCount || 0}</div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-4 whitespace-nowrap hidden lg:table-cell">
                       <div className="text-sm text-gray-900">{service.totalUsers || 0}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -254,7 +384,7 @@ const AdminMainServices = () => {
                           </svg>
                         </Link>
                         <button 
-                          onClick={() => handleDelete(service.id)}
+                          onClick={() => setShowDeleteConfirm(service.id)}
                           className="text-red-600 hover:text-red-900"
                           title="Supprimer"
                         >
@@ -271,6 +401,64 @@ const AdminMainServices = () => {
           </div>
         )}
       </div>
+      
+      {/* Statistiques */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className="bg-white rounded-lg shadow p-5">
+          <h3 className="text-sm font-medium text-gray-500">Services actifs</h3>
+          <p className="text-3xl font-bold text-gray-800 mt-1">{services.length}</p>
+        </div>
+        <div className="bg-white rounded-lg shadow p-5">
+          <h3 className="text-sm font-medium text-gray-500">Abonnements</h3>
+          <p className="text-3xl font-bold text-gray-800 mt-1">
+            {services.reduce((sum, service) => sum + (service.subscriptionCount || 0), 0)}
+          </p>
+        </div>
+        <div className="bg-white rounded-lg shadow p-5">
+          <h3 className="text-sm font-medium text-gray-500">Utilisateurs</h3>
+          <p className="text-3xl font-bold text-gray-800 mt-1">
+            {services.reduce((sum, service) => sum + (service.totalUsers || 0), 0)}
+          </p>
+        </div>
+        <div className="bg-white rounded-lg shadow p-5">
+          <h3 className="text-sm font-medium text-gray-500">Catégories</h3>
+          <p className="text-3xl font-bold text-gray-800 mt-1">
+            {categories.length - 1} {/* -1 pour exclure "Tous" */}
+          </p>
+        </div>
+      </div>
+      
+      {/* Boîte de dialogue de confirmation de suppression */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 overflow-y-auto z-50 flex items-center justify-center">
+          <div className="fixed inset-0 bg-black bg-opacity-50 transition-opacity" onClick={() => setShowDeleteConfirm(null)}></div>
+          <div className="relative bg-white rounded-lg max-w-md w-full mx-4 p-6">
+            <div className="text-center">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-red-500 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              <h3 className="text-lg font-medium text-gray-900 mt-4">Confirmation de suppression</h3>
+              <p className="text-sm text-gray-500 mt-2">
+                Êtes-vous sûr de vouloir supprimer ce service ? Cette action supprimera également tous les abonnements associés et ne peut pas être annulée.
+              </p>
+            </div>
+            <div className="mt-6 flex justify-center space-x-4">
+              <button
+                onClick={() => setShowDeleteConfirm(null)}
+                className="px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-md shadow-sm text-sm font-medium hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={() => handleDelete(showDeleteConfirm)}
+                className="px-4 py-2 bg-red-600 text-white border border-transparent rounded-md shadow-sm text-sm font-medium hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+              >
+                Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
