@@ -1,17 +1,17 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, Suspense, lazy } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { firestore } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { useSubscriptions } from '../contexts/SubscriptionContext';
 
-// Composant pour afficher un prix proratisé avec formatage cohérent
-const FormattedPrice = ({ price, isRecurring = false, duration = null }) => (
+// Extraction de sous-composants pour une meilleure performance et maintenance
+const FormattedPrice = React.memo(({ price, isRecurring = false, duration = null }) => (
   <span className="font-bold text-blue-600">
-    {price.toFixed(2)} €{isRecurring ? ' / mois' : (duration ? ` pour ${duration} jours` : '')}
+    {typeof price === 'number' ? price.toFixed(2) : '0.00'} €{isRecurring ? ' / mois' : (duration ? ` pour ${duration} jours` : '')}
   </span>
-);
+));
 
-// Composant pour les états de chargement
+// Squelette de chargement avec dimensions fixes pour éviter CLS
 const LoadingState = () => (
   <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-12 px-4 flex justify-center items-center">
     <div className="flex flex-col items-center">
@@ -21,8 +21,8 @@ const LoadingState = () => (
   </div>
 );
 
-// Composant pour les états d'erreur
-const ErrorState = ({ error }) => (
+// Composant d'erreur mémorisé pour éviter les re-rendus inutiles
+const ErrorState = React.memo(({ error }) => (
   <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-12 px-4">
     <div className="max-w-3xl mx-auto bg-white rounded-xl shadow-md overflow-hidden">
       <div className="p-8">
@@ -39,9 +39,54 @@ const ErrorState = ({ error }) => (
       </div>
     </div>
   </div>
-);
+));
 
-// Composant principal pour la page de détails du service
+// Extraction du composant de sélection d'abonnement pour optimiser les re-rendus
+const SubscriptionOption = React.memo(({ 
+  subscription, 
+  isSelected, 
+  onClick
+}) => (
+  <div 
+    className={`bg-white border rounded-lg p-4 cursor-pointer transition-all shadow-sm hover:shadow-md ${
+      isSelected 
+        ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200' 
+        : 'border-gray-200 hover:border-blue-300'
+    }`}
+    onClick={onClick}
+  >
+    <div className="flex justify-between items-start">
+      <h3 className="font-medium text-gray-800">{subscription.name}</h3>
+      <div className="text-right">
+        <p className="text-lg font-bold text-blue-600">
+          {typeof subscription.price === 'number' ? subscription.price.toFixed(2) : '0.00'} €
+        </p>
+        <p className="text-xs text-gray-500">prix mensuel</p>
+      </div>
+    </div>
+    
+    <p className="text-sm text-gray-500 mt-1">
+      {subscription.accessType === 'account' 
+        ? 'Accès via identifiants' 
+        : 'Accès via lien d\'invitation'}
+    </p>
+    
+    <div className="mt-4 flex justify-between items-center">
+      <span className="text-sm text-gray-600">
+        {subscription.currentUsers} / {subscription.maxUsers} utilisateurs
+      </span>
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+        (subscription.maxUsers - subscription.currentUsers) > 0 
+          ? 'bg-green-100 text-green-800' 
+          : 'bg-red-100 text-red-800'
+      }`}>
+        {Math.max(0, subscription.maxUsers - subscription.currentUsers)} places disponibles
+      </span>
+    </div>
+  </div>
+));
+
+// Composant principal avec des optimisations de performance
 const ServiceDetailsPage = () => {
   const { serviceId } = useParams();
   const navigate = useNavigate();
@@ -51,13 +96,14 @@ const ServiceDetailsPage = () => {
   // États
   const [service, setService] = useState(null);
   const [subscriptions, setSubscriptions] = useState([]);
-  const [selectedSubscription, setSelectedSubscription] = useState(null);
+  const [selectedSubscriptionId, setSelectedSubscriptionId] = useState(null);
   const [customDuration, setCustomDuration] = useState(14);
   const [isRecurring, setIsRecurring] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [lastAvailabilityCheck, setLastAvailabilityCheck] = useState(0);
   
-  // Couleurs de fond prédéfinies pour différents services
+  // Couleurs de fond prédéfinies mémorisées une seule fois
   const serviceBgColors = useMemo(() => ({
     'netflix': '#000000',
     'spotify': '#1DB954',
@@ -69,13 +115,18 @@ const ServiceDetailsPage = () => {
     'default': '#3B82F6'
   }), []);
   
-  // Obtention de la clé du service pour les couleurs - mémorisée pour éviter les recalculs
+  // Optimisation: mémoisation du service sélectionné
+  const selectedSubscription = useMemo(() => 
+    subscriptions.find(s => s.id === selectedSubscriptionId) || null,
+  [subscriptions, selectedSubscriptionId]);
+  
+  // Transformation du nom de service pour la correspondance des couleurs
   const getServiceKey = useCallback((serviceName) => {
     if (!serviceName) return 'default';
     return serviceName.toLowerCase().replace(/\s+/g, '');
   }, []);
   
-  // Calcul de la couleur de fond pour le service actuel - mémorisé
+  // Calcul de la couleur de fond mémorisé
   const bgColor = useMemo(() => {
     if (!service) return serviceBgColors.default;
     
@@ -92,16 +143,48 @@ const ServiceDetailsPage = () => {
     bgColor === '#000000' ? '#111111' : bgColor, 
   [bgColor]);
 
-  // Charger les données du service et des abonnements disponibles
+  // Fonction optimisée pour charger les abonnements disponibles avec mise en cache
+  const loadAvailableSubscriptions = useCallback(async (forceRefresh = false) => {
+    try {
+      // Optimisation: éviter les requêtes trop fréquentes (pas plus d'une toutes les 10 secondes)
+      const now = Date.now();
+      if (!forceRefresh && now - lastAvailabilityCheck < 10000 && subscriptions.length > 0) {
+        return subscriptions;
+      }
+      
+      const availableSubs = await getAvailableSubscriptions(serviceId);
+      setLastAvailabilityCheck(now);
+      
+      if (availableSubs.length > 0) {
+        setSubscriptions(availableSubs);
+        // Sélectionner le premier abonnement par défaut si aucun n'est sélectionné
+        if (!selectedSubscriptionId) {
+          setSelectedSubscriptionId(availableSubs[0].id);
+        }
+      } else {
+        setSubscriptions([]);
+      }
+      
+      return availableSubs;
+    } catch (err) {
+      console.error("Erreur lors du chargement des abonnements:", err);
+      setError("Impossible de charger les abonnements disponibles. Veuillez réessayer.");
+      return [];
+    }
+  }, [serviceId, getAvailableSubscriptions, lastAvailabilityCheck, subscriptions, selectedSubscriptionId]);
+
+  // Effet pour charger les données initiales avec optimisations
   useEffect(() => {
     let isMounted = true;
+    let loadingTimeout;
     
     const fetchData = async () => {
       try {
         setLoading(true);
         
-        // Récupérer les informations du service
-        const serviceDoc = await firestore.collection('services').doc(serviceId).get();
+        // Utiliser une requête cache-first pour le service
+        const serviceDoc = await firestore.collection('services').doc(serviceId).get({ source: 'cache' })
+          .catch(() => firestore.collection('services').doc(serviceId).get());
         
         if (!isMounted) return;
         
@@ -116,23 +199,11 @@ const ServiceDetailsPage = () => {
           ...serviceDoc.data()
         };
         
-        if (isMounted) {
-          setService(serviceData);
-        }
-        
-        // Récupérer les abonnements disponibles
-        const availableSubs = await getAvailableSubscriptions(serviceId);
-        
         if (!isMounted) return;
+        setService(serviceData);
         
-        if (availableSubs.length > 0 && isMounted) {
-          // Sélectionner le premier abonnement par défaut
-          setSelectedSubscription(availableSubs[0]);
-          setSubscriptions(availableSubs);
-        } else if (isMounted) {
-          setSubscriptions([]);
-          // Sans erreur, simplement aucun abonnement disponible
-        }
+        // Charger les abonnements avec notre fonction optimisée
+        await loadAvailableSubscriptions(true);
         
         if (isMounted) {
           setLoading(false);
@@ -149,63 +220,102 @@ const ServiceDetailsPage = () => {
 
     fetchData();
     
+    // Montrer au moins le loader pendant 500ms pour éviter le flash
+    loadingTimeout = setTimeout(() => {
+      if (isMounted && loading) {
+        setLoading(false);
+      }
+    }, 500);
+    
     // Nettoyage pour éviter les fuites de mémoire
     return () => {
       isMounted = false;
+      clearTimeout(loadingTimeout);
     };
-  }, [serviceId, getAvailableSubscriptions]);
+  }, [serviceId, loadAvailableSubscriptions]);
 
-  // Fonction pour gérer la souscription - mémorisée pour éviter les recréations
-  const handleSubscribe = useCallback(() => {
+  // Gestionnaire pour la sélection d'abonnement optimisé
+  const handleSubscriptionSelect = useCallback((subscriptionId) => {
+    setSelectedSubscriptionId(subscriptionId);
+  }, []);
+
+  // Fonction optimisée pour gérer l'abonnement
+  const handleSubscribe = useCallback(async () => {
     if (!currentUser) {
       navigate('/login', { state: { redirect: `/service/${serviceId}` } });
       return;
     }
     
-    if (!selectedSubscription) {
+    if (!selectedSubscriptionId) {
       setError("Veuillez sélectionner un abonnement");
       return;
     }
     
-    const duration = isRecurring ? 30 : customDuration;
-    navigate(`/checkout/${serviceId}/${selectedSubscription.id}?duration=${duration}&recurring=${isRecurring}`);
-  }, [currentUser, serviceId, selectedSubscription, isRecurring, customDuration, navigate]);
+    // Vérifier une dernière fois la disponibilité avant de procéder
+    try {
+      const currentSubs = await loadAvailableSubscriptions(true);
+      const stillAvailable = currentSubs.some(s => 
+        s.id === selectedSubscriptionId && 
+        s.maxUsers > s.currentUsers
+      );
+      
+      if (!stillAvailable) {
+        setError("Cet abonnement n'est plus disponible. Veuillez en choisir un autre.");
+        return;
+      }
+      
+      const duration = isRecurring ? 30 : customDuration;
+      navigate(`/checkout/${serviceId}/${selectedSubscriptionId}?duration=${duration}&recurring=${isRecurring}`);
+    } catch (err) {
+      setError("Impossible de vérifier la disponibilité de l'abonnement. Veuillez réessayer.");
+    }
+  }, [
+    currentUser, 
+    navigate, 
+    serviceId, 
+    selectedSubscriptionId, 
+    isRecurring, 
+    customDuration, 
+    loadAvailableSubscriptions
+  ]);
   
-  // Gérer la modification de la durée
+  // Handlers optimisés avec useCallback pour éviter les re-créations
   const handleDurationChange = useCallback((e) => {
     setCustomDuration(parseInt(e.target.value, 10));
   }, []);
   
-  // Gérer la modification du type d'abonnement
   const handleSubscriptionTypeChange = useCallback((isRecur) => {
     setIsRecurring(isRecur);
   }, []);
   
-  // Calculer le prix proratisé
+  // Prix calculé mémorisé pour éviter les calculs répétés
   const calculatedPrice = useMemo(() => {
     if (!selectedSubscription) return 0;
     
+    // Protection contre les données invalides
+    const price = typeof selectedSubscription.price === 'number' 
+      ? selectedSubscription.price 
+      : 0;
+      
     return isRecurring
-      ? selectedSubscription.price
-      : calculateProRatedPrice(selectedSubscription.price, customDuration);
+      ? price
+      : calculateProRatedPrice(price, customDuration);
   }, [selectedSubscription, isRecurring, customDuration, calculateProRatedPrice]);
 
-  // Afficher l'état de chargement
+  // États de rendu
   if (loading) {
     return <LoadingState />;
   }
   
-  // Afficher l'état d'erreur si nécessaire
   if (error) {
     return <ErrorState error={error} />;
   }
   
-  // Si le service n'est pas chargé correctement
   if (!service) {
     return <ErrorState error="Service non trouvé" />;
   }
 
-  // Rendu principal
+  // Rendu principal optimisé
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-12 px-4">
       <div className="max-w-6xl mx-auto">
@@ -276,42 +386,12 @@ const ServiceDetailsPage = () => {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {subscriptions.map(subscription => (
-                <div 
+                <SubscriptionOption
                   key={subscription.id}
-                  className={`bg-white border rounded-lg p-4 cursor-pointer transition-all shadow-sm hover:shadow-md ${
-                    selectedSubscription?.id === subscription.id 
-                      ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200' 
-                      : 'border-gray-200 hover:border-blue-300'
-                  }`}
-                  onClick={() => setSelectedSubscription(subscription)}
-                >
-                  <div className="flex justify-between items-start">
-                    <h3 className="font-medium text-gray-800">{subscription.name}</h3>
-                    <div className="text-right">
-                      <p className="text-lg font-bold text-blue-600">{subscription.price.toFixed(2)} €</p>
-                      <p className="text-xs text-gray-500">prix mensuel</p>
-                    </div>
-                  </div>
-                  
-                  <p className="text-sm text-gray-500 mt-1">
-                    {subscription.accessType === 'account' 
-                      ? 'Accès via identifiants' 
-                      : 'Accès via lien d\'invitation'}
-                  </p>
-                  
-                  <div className="mt-4 flex justify-between items-center">
-                    <span className="text-sm text-gray-600">
-                      {subscription.currentUsers} / {subscription.maxUsers} utilisateurs
-                    </span>
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      subscription.maxUsers - subscription.currentUsers > 0 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-red-100 text-red-800'
-                    }`}>
-                      {subscription.maxUsers - subscription.currentUsers} places disponibles
-                    </span>
-                  </div>
-                </div>
+                  subscription={subscription}
+                  isSelected={selectedSubscriptionId === subscription.id}
+                  onClick={() => handleSubscriptionSelect(subscription.id)}
+                />
               ))}
             </div>
           )}
@@ -341,7 +421,11 @@ const ServiceDetailsPage = () => {
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-xl font-bold text-blue-600">{selectedSubscription.price.toFixed(2)} €</p>
+                    <p className="text-xl font-bold text-blue-600">
+                      {typeof selectedSubscription.price === 'number' 
+                        ? selectedSubscription.price.toFixed(2) 
+                        : '0.00'} €
+                    </p>
                     <p className="text-xs text-gray-500">prix mensuel</p>
                   </div>
                 </div>
@@ -412,7 +496,11 @@ const ServiceDetailsPage = () => {
                       <>
                         <div className="flex justify-between">
                           <span className="text-gray-700">Prix mensuel:</span>
-                          <span className="font-medium">{selectedSubscription.price.toFixed(2)} €</span>
+                          <span className="font-medium">
+                            {typeof selectedSubscription.price === 'number' 
+                              ? selectedSubscription.price.toFixed(2) 
+                              : '0.00'} €
+                          </span>
                         </div>
                         <div className="flex justify-between mt-1">
                           <span className="text-gray-700">Prix pour {customDuration} jours:</span>
@@ -424,17 +512,17 @@ const ServiceDetailsPage = () => {
                   
                   <button
                     onClick={handleSubscribe}
-                    className="w-full text-white font-bold py-3 px-4 rounded-lg transition-colors mt-4"
+                    className="w-full text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 mt-4"
                     style={{
                       background: bgColor,
-                      // Ajouter une transition pour le survol
-                      transition: 'background-color 0.2s'
                     }}
                     onMouseOver={(e) => e.currentTarget.style.background = darkerBgColor}
                     onMouseOut={(e) => e.currentTarget.style.background = bgColor}
                   >
                     {isRecurring 
-                      ? `S'abonner mensuellement à ${selectedSubscription.price.toFixed(2)} € / mois` 
+                      ? `S'abonner mensuellement à ${typeof selectedSubscription.price === 'number' 
+                          ? selectedSubscription.price.toFixed(2) 
+                          : '0.00'} € / mois` 
                       : `Acheter pour ${customDuration} jours à ${calculatedPrice.toFixed(2)} €`}
                   </button>
                 </div>

@@ -1,37 +1,230 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
+// Composant d'indicateur de force du mot de passe
+const PasswordStrengthIndicator = React.memo(({ password }) => {
+  // Calcul de la force du mot de passe
+  const calculateStrength = (pwd) => {
+    if (!pwd) return 0;
+    
+    let strength = 0;
+    
+    // Longueur (1-4 points)
+    if (pwd.length >= 6) strength += 1;
+    if (pwd.length >= 8) strength += 1;
+    if (pwd.length >= 10) strength += 1;
+    if (pwd.length >= 12) strength += 1;
+    
+    // Complexité (1 point chacun)
+    if (/[0-9]/.test(pwd)) strength += 1; // Chiffres
+    if (/[a-z]/.test(pwd)) strength += 1; // Minuscules
+    if (/[A-Z]/.test(pwd)) strength += 1; // Majuscules
+    if (/[^a-zA-Z0-9]/.test(pwd)) strength += 1; // Caractères spéciaux
+    
+    return Math.min(Math.floor((strength / 8) * 100), 100);
+  };
+  
+  const strength = calculateStrength(password);
+  
+  // Déterminer la couleur et le texte en fonction de la force
+  const getColorAndText = () => {
+    if (strength < 30) return { color: 'bg-red-500', text: 'Faible' };
+    if (strength < 60) return { color: 'bg-yellow-500', text: 'Moyen' };
+    if (strength < 80) return { color: 'bg-blue-500', text: 'Bon' };
+    return { color: 'bg-green-500', text: 'Fort' };
+  };
+  
+  const { color, text } = getColorAndText();
+  
+  return (
+    <div className="mt-1">
+      <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+        <div 
+          className={`h-full ${color} transition-all duration-300 ease-in-out`} 
+          style={{ width: `${strength}%` }}
+        />
+      </div>
+      <p className="text-xs mt-1 text-gray-500">
+        Force: <span className={`font-medium ${color.replace('bg-', 'text-')}`}>{text}</span>
+      </p>
+    </div>
+  );
+});
+
 const Register = () => {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError] = useState('');
+  const [formState, setFormState] = useState({
+    name: '',
+    email: '',
+    password: '',
+    confirmPassword: ''
+  });
+  const [touched, setTouched] = useState({});
+  const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+  const [serverError, setServerError] = useState('');
+  
   const { register } = useAuth();
   const navigate = useNavigate();
-
-  async function handleSubmit(e) {
-    e.preventDefault();
+  
+  // Gestionnaire générique pour les changements de champ
+  const handleChange = useCallback((e) => {
+    const { name, value } = e.target;
+    setFormState(prev => ({ ...prev, [name]: value }));
+  }, []);
+  
+  // Marquer un champ comme touché lorsqu'il perd le focus
+  const handleBlur = useCallback((e) => {
+    const { name } = e.target;
+    setTouched(prev => ({ ...prev, [name]: true }));
+  }, []);
+  
+  // Validation du formulaire
+  const validateForm = useCallback(() => {
+    const newErrors = {};
     
-    if (password !== confirmPassword) {
-      return setError('Les mots de passe ne correspondent pas');
+    // Valider le nom
+    if (!formState.name.trim()) {
+      newErrors.name = 'Le nom est requis';
     }
     
+    // Valider l'email
+    if (!formState.email) {
+      newErrors.email = 'L\'email est requis';
+    } else if (!/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(formState.email)) {
+      newErrors.email = 'L\'adresse email est invalide';
+    }
+    
+    // Valider le mot de passe
+    if (!formState.password) {
+      newErrors.password = 'Le mot de passe est requis';
+    } else if (formState.password.length < 6) {
+      newErrors.password = 'Le mot de passe doit contenir au moins 6 caractères';
+    }
+    
+    // Valider la confirmation du mot de passe
+    if (formState.password !== formState.confirmPassword) {
+      newErrors.confirmPassword = 'Les mots de passe ne correspondent pas';
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  }, [formState]);
+  
+  // Valider les champs individuels lorsqu'ils changent
+  useEffect(() => {
+    // Crée une fonction de validation pour chaque champ
+    const validateField = (field) => {
+      let error = '';
+      
+      switch (field) {
+        case 'name':
+          if (!formState.name.trim()) error = 'Le nom est requis';
+          break;
+        case 'email':
+          if (!formState.email) {
+            error = 'L\'email est requis';
+          } else if (!/^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(formState.email)) {
+            error = 'L\'adresse email est invalide';
+          }
+          break;
+        case 'password':
+          if (!formState.password) {
+            error = 'Le mot de passe est requis';
+          } else if (formState.password.length < 6) {
+            error = 'Le mot de passe doit contenir au moins 6 caractères';
+          }
+          break;
+        case 'confirmPassword':
+          if (formState.password !== formState.confirmPassword) {
+            error = 'Les mots de passe ne correspondent pas';
+          }
+          break;
+        default:
+          break;
+      }
+      
+      return error;
+    };
+    
+    // Pour chaque champ qui a été touché, mettre à jour les erreurs
+    Object.keys(touched).forEach(field => {
+      if (touched[field]) {
+        const fieldError = validateField(field);
+        setErrors(prev => ({
+          ...prev,
+          [field]: fieldError
+        }));
+      }
+    });
+  }, [formState, touched]);
+  
+  // Soumettre le formulaire
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    // Marquer tous les champs comme touchés pour déclencher la validation
+    setTouched({
+      name: true,
+      email: true,
+      password: true,
+      confirmPassword: true
+    });
+    
+    // Valider le formulaire
+    const isValid = validateForm();
+    
+    if (!isValid) {
+      return;
+    }
+    
+    setServerError('');
+    setLoading(true);
+    
     try {
-      setError('');
-      setLoading(true);
-      await register(email, password, name);
+      await register(formState.email, formState.password, formState.name);
       navigate('/dashboard');
     } catch (error) {
-      setError('Échec de la création du compte.');
-      console.error(error);
+      console.error('Erreur d\'inscription:', error);
+      
+      // Messages d'erreur spécifiques
+      if (error.code === 'auth/email-already-in-use') {
+        setServerError('Cette adresse email est déjà utilisée par un autre compte.');
+      } else if (error.code === 'auth/invalid-email') {
+        setServerError('L\'adresse email n\'est pas valide.');
+      } else if (error.code === 'auth/weak-password') {
+        setServerError('Le mot de passe est trop faible. Il doit contenir au moins 6 caractères.');
+      } else {
+        setServerError(error.message || 'Échec de la création du compte. Veuillez réessayer.');
+      }
     } finally {
       setLoading(false);
     }
-  }
-
+  };
+  
+  // Afficher un message d'erreur pour un champ
+  const ErrorMessage = ({ name }) => {
+    if (!errors[name] || !touched[name]) return null;
+    
+    return (
+      <p className="mt-1 text-sm text-red-600">{errors[name]}</p>
+    );
+  };
+  
+  // Déterminer si un champ a une erreur
+  const fieldHasError = (name) => {
+    return touched[name] && errors[name];
+  };
+  
+  // Classes pour les champs de formulaire
+  const getInputClasses = (name) => {
+    return `appearance-none bg-white/5 border ${
+      fieldHasError(name) 
+        ? 'border-red-500 focus:ring-red-500' 
+        : 'border-white/10 focus:ring-blue-500'
+    } rounded-lg w-full py-3 px-4 text-white leading-tight focus:outline-none focus:ring-2 focus:border-transparent`;
+  };
+  
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 to-blue-900 py-12 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
       <div className="max-w-md w-full bg-white/10 backdrop-blur-md rounded-xl shadow-xl overflow-hidden">
@@ -40,9 +233,9 @@ const Register = () => {
         </div>
         
         <div className="p-6 sm:p-8">
-          {error && (
+          {serverError && (
             <div className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-lg relative mb-6">
-              <span className="block sm:inline">{error}</span>
+              <span className="block sm:inline">{serverError}</span>
             </div>
           )}
           
@@ -57,11 +250,13 @@ const Register = () => {
                 type="text"
                 autoComplete="name"
                 required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="appearance-none bg-white/5 border border-white/10 rounded-lg w-full py-3 px-4 text-white leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                value={formState.name}
+                onChange={handleChange}
+                onBlur={handleBlur}
+                className={getInputClasses('name')}
                 placeholder="Votre nom"
               />
+              <ErrorMessage name="name" />
             </div>
 
             <div>
@@ -74,11 +269,13 @@ const Register = () => {
                 type="email"
                 autoComplete="email"
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="appearance-none bg-white/5 border border-white/10 rounded-lg w-full py-3 px-4 text-white leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                value={formState.email}
+                onChange={handleChange}
+                onBlur={handleBlur}
+                className={getInputClasses('email')}
                 placeholder="votre@email.com"
               />
+              <ErrorMessage name="email" />
             </div>
 
             <div>
@@ -91,31 +288,33 @@ const Register = () => {
                 type="password"
                 autoComplete="new-password"
                 required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="appearance-none bg-white/5 border border-white/10 rounded-lg w-full py-3 px-4 text-white leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                value={formState.password}
+                onChange={handleChange}
+                onBlur={handleBlur}
+                className={getInputClasses('password')}
                 placeholder="••••••••"
               />
-              <p className="mt-1 text-xs text-white/60">
-                8 caractères minimum avec lettres, chiffres et caractères spéciaux
-              </p>
+              <ErrorMessage name="password" />
+              <PasswordStrengthIndicator password={formState.password} />
             </div>
 
             <div>
-              <label htmlFor="confirm-password" className="block text-sm font-medium text-white mb-2">
+              <label htmlFor="confirmPassword" className="block text-sm font-medium text-white mb-2">
                 Confirmer le mot de passe
               </label>
               <input
-                id="confirm-password"
-                name="confirm-password"
+                id="confirmPassword"
+                name="confirmPassword"
                 type="password"
                 autoComplete="new-password"
                 required
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="appearance-none bg-white/5 border border-white/10 rounded-lg w-full py-3 px-4 text-white leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                value={formState.confirmPassword}
+                onChange={handleChange}
+                onBlur={handleBlur}
+                className={getInputClasses('confirmPassword')}
                 placeholder="••••••••"
               />
+              <ErrorMessage name="confirmPassword" />
             </div>
 
             <div className="flex items-center">
@@ -128,12 +327,13 @@ const Register = () => {
               />
               <label htmlFor="terms" className="ml-2 block text-sm text-white">
                 J'accepte les{' '}
-                    <Link to="/terms" className="text-blue-400 hover:text-blue-300">
-                        conditions d'utilisation
-                    </Link>
-                    <Link to="/privacy" className="text-blue-400 hover:text-blue-300">
-                        politique de confidentialité
-                    </Link>
+                <Link to="/terms" className="text-blue-400 hover:text-blue-300">
+                  conditions d'utilisation
+                </Link>{' '}
+                et la{' '}
+                <Link to="/privacy" className="text-blue-400 hover:text-blue-300">
+                  politique de confidentialité
+                </Link>
               </label>
             </div>
 
@@ -141,14 +341,17 @@ const Register = () => {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors ${
+                  loading ? 'opacity-70 cursor-not-allowed' : ''
+                }`}
               >
                 {loading ? (
                   <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                ) : "Créer un compte"}
+                ) : null}
+                {loading ? "Création en cours..." : "Créer un compte"}
               </button>
             </div>
           </form>
