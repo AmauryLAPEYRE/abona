@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { StripeProvider } from './contexts/StripeContext';
 import { AuthProvider } from './contexts/AuthContext';
+import { NotificationProvider } from './contexts/NotificationContext';
 import { SubscriptionProvider } from './contexts/SubscriptionContext';
 
 // Pages principales
@@ -15,6 +16,7 @@ import AdminPanel from './pages/AdminPanel';
 import Checkout from './pages/Checkout';
 import SuccessPage from './pages/SuccessPage';
 import SubscriptionDetails from './pages/SubscriptionDetails';
+import ProfilePage from './pages/ProfilePage';
 
 // Pages Admin
 import AdminMainServices from './components/admin/AdminMainServices';
@@ -32,17 +34,19 @@ const App = () => {
   return (
     <Router>
       <AuthProvider>
-        <StripeProvider>
-          <SubscriptionProvider>
-            {/* La barre de navigation ne doit pas s'afficher sur les pages d'authentification et landing page */}
-            <Routes>
-              <Route path="/" element={<LandingPage />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/register" element={<Register />} />
-              <Route path="*" element={<AppWithNavbar />} />
-            </Routes>
-          </SubscriptionProvider>
-        </StripeProvider>
+        <NotificationProvider>
+          <StripeProvider>
+            <SubscriptionProvider>
+              {/* La barre de navigation ne doit pas s'afficher sur les pages d'authentification et landing page */}
+              <Routes>
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/register" element={<Register />} />
+                <Route path="*" element={<AppWithNavbar />} />
+              </Routes>
+            </SubscriptionProvider>
+          </StripeProvider>
+        </NotificationProvider>
       </AuthProvider>
     </Router>
   );
@@ -76,6 +80,11 @@ const AppWithNavbar = () => {
           <Route path="/dashboard" element={
             <PrivateRoute>
               <Dashboard />
+            </PrivateRoute>
+          } />
+          <Route path="/profile" element={
+            <PrivateRoute>
+              <ProfilePage />
             </PrivateRoute>
           } />
           
