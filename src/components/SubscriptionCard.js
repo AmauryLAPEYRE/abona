@@ -1,42 +1,104 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+
+// Composant pour afficher l'avatar d'un utilisateur
+const UserAvatar = ({ initial, color, ring = true }) => (
+  <div 
+    className={`w-8 h-8 rounded-full ${color} flex items-center justify-center font-bold text-sm ${
+      ring ? 'ring-2 ring-white' : ''
+    }`}
+  >
+    {initial}
+  </div>
+);
+
+// Composant pour afficher un champ d'information
+const InfoField = ({ label, value, isCopyable = false, isLink = false }) => {
+  const handleCopy = () => {
+    navigator.clipboard.writeText(value);
+  };
+
+  return (
+    <div>
+      <p className="text-sm text-gray-500">{label}</p>
+      <div className="flex items-center justify-between">
+        {isLink ? (
+          <a 
+            href={value} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-blue-600 break-all hover:underline"
+          >
+            {value}
+          </a>
+        ) : (
+          <p className="font-medium">{value}</p>
+        )}
+        
+        {isCopyable && (
+          <button 
+            onClick={handleCopy}
+            className="text-blue-600 hover:text-blue-800 text-sm"
+          >
+            Copier
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
 
 const SubscriptionCard = ({ subscription }) => {
   const { currentUser } = useAuth();
   const isExpired = new Date() > new Date(subscription.expiryDate.toDate());
   
-  // Générer des avatars aléatoires pour simuler les autres utilisateurs partageant l'abonnement
-  const generateRandomUsers = (count = 3) => {
+  // Génération des avatars aléatoires pour les autres utilisateurs
+  const otherUsers = useMemo(() => {
     const colors = ['bg-blue-500', 'bg-green-500', 'bg-yellow-500', 'bg-purple-500', 'bg-red-500', 'bg-indigo-500'];
     const users = [];
+    
+    // Entre 1 et 4 autres utilisateurs aléatoires
+    const count = Math.floor(Math.random() * 4) + 1;
     
     for (let i = 0; i < count; i++) {
       const colorIndex = Math.floor(Math.random() * colors.length);
       users.push({
         color: colors[colorIndex],
-        initial: String.fromCharCode(65 + Math.floor(Math.random() * 26))
+        initial: String.fromCharCode(65 + Math.floor(Math.random() * 26)),
+        id: i
       });
     }
     
     return users;
-  };
+  }, []);
   
-  // Entre 1 et 4 autres utilisateurs aléatoires
-  const otherUsers = generateRandomUsers(Math.floor(Math.random() * 4) + 1);
   const totalUsers = otherUsers.length + 1; // +1 pour l'utilisateur actuel
   const maxUsers = totalUsers + 1; // Capacité maximale (+1)
   
+  // Style de la carte basé sur l'état de l'abonnement
+  const cardStyle = isExpired 
+    ? 'opacity-70' 
+    : 'hover:shadow-lg';
+  
+  // Style de l'en-tête basé sur l'état de l'abonnement
+  const headerStyle = isExpired 
+    ? 'bg-gray-600' 
+    : 'bg-gradient-to-r from-blue-600 to-purple-700';
+  
+  // Rendu du badge d'état
+  const StatusBadge = () => (
+    isExpired 
+      ? <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full">Expiré</span>
+      : <span className="bg-green-500 text-white text-xs px-2 py-1 rounded-full">Actif</span>
+  );
+  
   return (
-    <div className={`bg-white rounded-xl shadow-md overflow-hidden transition-all duration-300 ${isExpired ? 'opacity-70' : 'hover:shadow-lg'}`}>
-      <div className={`p-6 ${isExpired ? 'bg-gray-600' : 'bg-gradient-to-r from-blue-600 to-purple-700'}`}>
+    <div className={`bg-white rounded-xl shadow-md overflow-hidden transition-all duration-300 ${cardStyle}`}>
+      <div className={`p-6 ${headerStyle}`}>
         <div className="flex justify-between items-start">
           <h3 className="text-xl font-bold text-white">{subscription.serviceName}</h3>
-          {isExpired ? (
-            <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full">Expiré</span>
-          ) : (
-            <span className="bg-green-500 text-white text-xs px-2 py-1 rounded-full">Actif</span>
-          )}
+          <StatusBadge />
         </div>
         
         {!isExpired && (
@@ -44,18 +106,18 @@ const SubscriptionCard = ({ subscription }) => {
             <p className="text-white/80 text-sm mb-2">Partagé avec :</p>
             <div className="flex -space-x-2">
               {/* Avatar de l'utilisateur actuel */}
-              <div className="w-8 h-8 rounded-full bg-white text-blue-700 flex items-center justify-center font-bold text-sm ring-2 ring-white">
-                {currentUser?.displayName ? currentUser.displayName.charAt(0).toUpperCase() : 'U'}
-              </div>
+              <UserAvatar 
+                initial={currentUser?.displayName ? currentUser.displayName.charAt(0).toUpperCase() : 'U'}
+                color="bg-white text-blue-700"
+              />
               
               {/* Avatars des autres utilisateurs */}
-              {otherUsers.map((user, index) => (
-                <div 
-                  key={index} 
-                  className={`w-8 h-8 rounded-full ${user.color} flex items-center justify-center font-bold text-sm text-white ring-2 ring-white`}
-                >
-                  {user.initial}
-                </div>
+              {otherUsers.map(user => (
+                <UserAvatar
+                  key={user.id}
+                  initial={user.initial}
+                  color={`${user.color} text-white`}
+                />
               ))}
             </div>
             
@@ -68,28 +130,25 @@ const SubscriptionCard = ({ subscription }) => {
       
       <div className="p-6">
         <div className="space-y-3 mb-4">
-          <div>
-            <p className="text-sm text-gray-500">Email</p>
-            <p className="font-medium">{subscription.email}</p>
-          </div>
+          <InfoField 
+            label="Email" 
+            value={subscription.email} 
+            isCopyable 
+          />
           
-          <div>
-            <p className="text-sm text-gray-500">Mot de passe</p>
-            <p className="font-medium">{subscription.password}</p>
-          </div>
+          <InfoField 
+            label="Mot de passe" 
+            value={subscription.password} 
+            isCopyable 
+          />
           
           {subscription.accessLink && (
-            <div>
-              <p className="text-sm text-gray-500">Lien d'accès</p>
-              <a 
-                href={subscription.accessLink} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-blue-600 break-all hover:underline"
-              >
-                {subscription.accessLink}
-              </a>
-            </div>
+            <InfoField 
+              label="Lien d'accès" 
+              value={subscription.accessLink} 
+              isCopyable 
+              isLink 
+            />
           )}
         </div>
         

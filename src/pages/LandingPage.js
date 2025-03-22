@@ -1,7 +1,18 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 const LandingPage = () => {
+  const { currentUser, logout } = useAuth();
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      console.error('Erreur de déconnexion', error);
+    }
+  };
+
   return (
     <div className="bg-gradient-to-b from-gray-900 to-blue-900 text-white min-h-screen">
       {/* Header/Navigation */}
@@ -10,11 +21,43 @@ const LandingPage = () => {
           <div className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">
             Abona
           </div>
-          <div className="flex space-x-4">
-            <Link to="/login" className="text-white hover:text-blue-300 transition-colors">Connexion</Link>
-            <Link to="/register" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors">
-              S'inscrire
-            </Link>
+          <div className="flex space-x-4 items-center">
+            {currentUser ? (
+              <div className="relative group">
+                <button className="flex items-center space-x-2 text-white hover:text-blue-300 transition-colors">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center text-white font-medium">
+                    {currentUser.displayName ? currentUser.displayName.charAt(0).toUpperCase() : 'U'}
+                  </div>
+                  <span className="font-medium">{currentUser.displayName || 'Utilisateur'}</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </button>
+                
+                {/* Menu déroulant */}
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-10 hidden group-hover:block">
+                  <Link to="/profile" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors">
+                    Mon profil
+                  </Link>
+                  <Link to="/dashboard" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors">
+                    Mes abonnements
+                  </Link>
+                  <button 
+                    onClick={handleLogout}
+                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                  >
+                    Déconnexion
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <Link to="/login" className="text-white hover:text-blue-300 transition-colors">Connexion</Link>
+                <Link to="/register" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors">
+                  S'inscrire
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -33,12 +76,21 @@ const LandingPage = () => {
             <span className="font-bold text-white">Exclusif :</span> Payez uniquement pour la durée dont vous avez besoin, de 2 jours à plusieurs mois.
           </p>
           <div className="flex flex-col sm:flex-row justify-center gap-4">
-            <Link 
-              to="/register" 
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold py-4 px-8 rounded-lg text-lg transition-colors duration-300"
-            >
-              Commencer maintenant
-            </Link>
+            {currentUser ? (
+              <Link 
+                to="/dashboard" 
+                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold py-4 px-8 rounded-lg text-lg transition-colors duration-300"
+              >
+                Mon tableau de bord
+              </Link>
+            ) : (
+              <Link 
+                to="/register" 
+                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold py-4 px-8 rounded-lg text-lg transition-colors duration-300"
+              >
+                Commencer maintenant
+              </Link>
+            )}
             <Link 
               to="/services" 
               className="bg-white/10 hover:bg-white/20 text-white font-bold py-4 px-8 rounded-lg text-lg border border-white/20 transition-colors duration-300"
@@ -262,12 +314,21 @@ const LandingPage = () => {
           <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-8 md:p-12 text-center">
             <h2 className="text-3xl md:text-4xl font-bold mb-6">Prêt à économiser sur vos abonnements ?</h2>
             <p className="text-xl mb-8 max-w-3xl mx-auto">Rejoignez des milliers d'utilisateurs qui profitent déjà de services premium à prix réduit</p>
-            <Link 
-              to="/register" 
-              className="bg-white text-blue-600 hover:bg-gray-100 transition-colors px-8 py-4 rounded-lg font-bold text-lg"
-            >
-              S'inscrire gratuitement
-            </Link>
+            {currentUser ? (
+              <Link 
+                to="/dashboard" 
+                className="bg-white text-blue-600 hover:bg-gray-100 transition-colors px-8 py-4 rounded-lg font-bold text-lg"
+              >
+                Accéder à mon tableau de bord
+              </Link>
+            ) : (
+              <Link 
+                to="/register" 
+                className="bg-white text-blue-600 hover:bg-gray-100 transition-colors px-8 py-4 rounded-lg font-bold text-lg"
+              >
+                S'inscrire gratuitement
+              </Link>
+            )}
           </div>
         </div>
       </div>
