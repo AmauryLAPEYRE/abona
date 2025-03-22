@@ -4,13 +4,51 @@ import { firestore } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { useSubscriptions } from '../contexts/SubscriptionContext';
 
+// Composant pour afficher un prix proratisé avec formatage cohérent
+const FormattedPrice = ({ price, isRecurring = false, duration = null }) => (
+  <span className="font-bold text-blue-600">
+    {price.toFixed(2)} €{isRecurring ? ' / mois' : (duration ? ` pour ${duration} jours` : '')}
+  </span>
+);
+
+// Composant pour les états de chargement
+const LoadingState = () => (
+  <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-12 px-4 flex justify-center items-center">
+    <div className="flex flex-col items-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4"></div>
+      <p className="text-gray-600">Chargement du service...</p>
+    </div>
+  </div>
+);
+
+// Composant pour les états d'erreur
+const ErrorState = ({ error }) => (
+  <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-12 px-4">
+    <div className="max-w-3xl mx-auto bg-white rounded-xl shadow-md overflow-hidden">
+      <div className="p-8">
+        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6" role="alert">
+          <p className="font-bold">Erreur</p>
+          <p>{error}</p>
+        </div>
+        <Link 
+          to="/services" 
+          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
+        >
+          Retour aux services
+        </Link>
+      </div>
+    </div>
+  </div>
+);
+
+// Composant principal pour la page de détails du service
 const ServiceDetailsPage = () => {
   const { serviceId } = useParams();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { getAvailableSubscriptions, calculateProRatedPrice } = useSubscriptions();
   
-  // États principaux
+  // États
   const [service, setService] = useState(null);
   const [subscriptions, setSubscriptions] = useState([]);
   const [selectedSubscription, setSelectedSubscription] = useState(null);
@@ -19,7 +57,7 @@ const ServiceDetailsPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
-  // Couleurs de fond pour différents services (memoized)
+  // Couleurs de fond prédéfinies pour différents services
   const serviceBgColors = useMemo(() => ({
     'netflix': '#000000',
     'spotify': '#1DB954',
@@ -28,35 +66,44 @@ const ServiceDetailsPage = () => {
     'hbomax': '#5A189A',
     'amazonprime': '#00A8E1',
     'appletv': '#000000',
-    'default': '#3B82F6' // bleu par défaut
+    'default': '#3B82F6'
   }), []);
   
-  // Obtenir la clé du service pour les couleurs (memoized)
+  // Obtention de la clé du service pour les couleurs - mémorisée pour éviter les recalculs
   const getServiceKey = useCallback((serviceName) => {
-    return serviceName?.toLowerCase().replace(/\s+/g, '') || 'default';
+    if (!serviceName) return 'default';
+    return serviceName.toLowerCase().replace(/\s+/g, '');
   }, []);
   
-  // Obtenir la couleur de fond pour le service actuel (memoized)
-  const getServiceBgColor = useCallback(() => {
-    // Vérifier si une couleur est définie dans les métadonnées du service
-    if (service?.bgColor) {
-      return service.bgColor;
-    }
+  // Calcul de la couleur de fond pour le service actuel - mémorisé
+  const bgColor = useMemo(() => {
+    if (!service) return serviceBgColors.default;
     
-    // Sinon essayer de trouver une couleur prédéfinie basée sur le nom du service
-    const serviceKey = getServiceKey(service?.name);
+    // Utiliser la couleur définie dans les métadonnées du service si disponible
+    if (service.bgColor) return service.bgColor;
+    
+    // Sinon, utiliser une couleur prédéfinie basée sur le nom du service
+    const serviceKey = getServiceKey(service.name);
     return serviceBgColors[serviceKey] || serviceBgColors.default;
   }, [service, getServiceKey, serviceBgColors]);
+  
+  // Variation de couleur plus sombre pour les dégradés et les survols
+  const darkerBgColor = useMemo(() => 
+    bgColor === '#000000' ? '#111111' : bgColor, 
+  [bgColor]);
 
   // Charger les données du service et des abonnements disponibles
   useEffect(() => {
+    let isMounted = true;
+    
     const fetchData = async () => {
       try {
         setLoading(true);
-        setError(null);
         
         // Récupérer les informations du service
         const serviceDoc = await firestore.collection('services').doc(serviceId).get();
+        
+        if (!isMounted) return;
         
         if (!serviceDoc.exists) {
           setError("Service non trouvé");
@@ -69,32 +116,46 @@ const ServiceDetailsPage = () => {
           ...serviceDoc.data()
         };
         
-        setService(serviceData);
+        if (isMounted) {
+          setService(serviceData);
+        }
         
         // Récupérer les abonnements disponibles
         const availableSubs = await getAvailableSubscriptions(serviceId);
         
-        if (availableSubs.length === 0) {
-          console.log("Aucun abonnement disponible pour ce service");
-          // Pas d'erreur, mais on affiche un message à l'utilisateur dans l'UI
-        } else {
+        if (!isMounted) return;
+        
+        if (availableSubs.length > 0 && isMounted) {
           // Sélectionner le premier abonnement par défaut
           setSelectedSubscription(availableSubs[0]);
+          setSubscriptions(availableSubs);
+        } else if (isMounted) {
+          setSubscriptions([]);
+          // Sans erreur, simplement aucun abonnement disponible
         }
         
-        setSubscriptions(availableSubs);
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+          setError(null);
+        }
       } catch (err) {
         console.error("Erreur lors du chargement des données:", err);
-        setError(err.message || "Erreur lors du chargement des données");
-        setLoading(false);
+        if (isMounted) {
+          setError(err.message || "Erreur lors du chargement des données");
+          setLoading(false);
+        }
       }
     };
-    
+
     fetchData();
+    
+    // Nettoyage pour éviter les fuites de mémoire
+    return () => {
+      isMounted = false;
+    };
   }, [serviceId, getAvailableSubscriptions]);
 
-  // Fonction pour gérer la souscription
+  // Fonction pour gérer la souscription - mémorisée pour éviter les recréations
   const handleSubscribe = useCallback(() => {
     if (!currentUser) {
       navigate('/login', { state: { redirect: `/service/${serviceId}` } });
@@ -112,7 +173,7 @@ const ServiceDetailsPage = () => {
   
   // Gérer la modification de la durée
   const handleDurationChange = useCallback((e) => {
-    setCustomDuration(parseInt(e.target.value));
+    setCustomDuration(parseInt(e.target.value, 10));
   }, []);
   
   // Gérer la modification du type d'abonnement
@@ -120,7 +181,7 @@ const ServiceDetailsPage = () => {
     setIsRecurring(isRecur);
   }, []);
   
-  // Calculer le prix proratisé (memoized)
+  // Calculer le prix proratisé
   const calculatedPrice = useMemo(() => {
     if (!selectedSubscription) return 0;
     
@@ -128,49 +189,23 @@ const ServiceDetailsPage = () => {
       ? selectedSubscription.price
       : calculateProRatedPrice(selectedSubscription.price, customDuration);
   }, [selectedSubscription, isRecurring, customDuration, calculateProRatedPrice]);
-  
-  // Obtenir la couleur de fond
-  const bgColor = useMemo(() => getServiceBgColor(), [getServiceBgColor]);
-  // Générer des couleurs assombries pour les dégradés si nécessaire
-  const darkerBgColor = useMemo(() => bgColor === '#000000' ? '#111111' : bgColor, [bgColor]);
 
+  // Afficher l'état de chargement
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-12 px-4 flex justify-center items-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-      </div>
-    );
+    return <LoadingState />;
   }
   
+  // Afficher l'état d'erreur si nécessaire
   if (error) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-12 px-4">
-        <div className="max-w-3xl mx-auto bg-white rounded-xl shadow-md overflow-hidden">
-          <div className="p-8">
-            <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6" role="alert">
-              <p className="font-bold">Erreur</p>
-              <p>{error}</p>
-            </div>
-            <Link 
-              to="/services" 
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
-            >
-              Retour aux services
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
+    return <ErrorState error={error} />;
   }
   
+  // Si le service n'est pas chargé correctement
   if (!service) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-12 px-4 flex justify-center">
-        <div className="text-center py-10">Service non trouvé</div>
-      </div>
-    );
+    return <ErrorState error="Service non trouvé" />;
   }
 
+  // Rendu principal
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-12 px-4">
       <div className="max-w-6xl mx-auto">
@@ -181,6 +216,7 @@ const ServiceDetailsPage = () => {
           Retour aux services
         </Link>
         
+        {/* Détails du service */}
         <div className="bg-white rounded-xl shadow-lg overflow-hidden">
           <div className="md:flex">
             {/* Section du logo avec couleur de fond dynamique */}
@@ -190,7 +226,12 @@ const ServiceDetailsPage = () => {
             >
               <div className="h-64 md:h-full p-6 flex items-center justify-center">
                 {service.imageUrl ? (
-                  <img src={service.imageUrl} alt={service.name} className="max-h-full object-contain" />
+                  <img 
+                    src={service.imageUrl} 
+                    alt={service.name} 
+                    className="max-h-full object-contain"
+                    loading="eager" // Charge prioritairement cette image importante
+                  />
                 ) : (
                   <div className="text-6xl font-bold text-white">{service.name.charAt(0)}</div>
                 )}
@@ -279,7 +320,6 @@ const ServiceDetailsPage = () => {
         {/* Options de paiement */}
         {selectedSubscription && (
           <div className="bg-white rounded-xl shadow-lg overflow-hidden mt-8">
-            {/* En-tête avec une couleur correspondant au service */}
             <div 
               className="px-6 py-3"
               style={{ background: bgColor, color: 'white' }}
@@ -343,9 +383,10 @@ const ServiceDetailsPage = () => {
                   {!isRecurring && (
                     <div className="mt-2 pl-6">
                       <label htmlFor="custom-duration" className="block text-sm font-medium text-gray-700 mb-2">
-                        Choisissez votre durée (2-30 jours)
+                        Choisissez votre durée ({customDuration} jours)
                       </label>
                       <div className="flex items-center">
+                        <span className="text-sm font-medium mr-2">2</span>
                         <input
                           type="range"
                           id="custom-duration"
@@ -353,9 +394,9 @@ const ServiceDetailsPage = () => {
                           max="30"
                           value={customDuration}
                           onChange={handleDurationChange}
-                          className="w-full mr-4"
+                          className="w-full mx-2"
                         />
-                        <span className="text-sm font-medium w-16 text-center">{customDuration} jours</span>
+                        <span className="text-sm font-medium ml-2">30</span>
                       </div>
                     </div>
                   )}
@@ -365,9 +406,7 @@ const ServiceDetailsPage = () => {
                     {isRecurring ? (
                       <div className="flex justify-between">
                         <span className="text-gray-700">Abonnement mensuel:</span>
-                        <span className="font-bold text-blue-600">
-                          {selectedSubscription.price.toFixed(2)} € / mois
-                        </span>
+                        <FormattedPrice price={selectedSubscription.price} isRecurring={true} />
                       </div>
                     ) : (
                       <>
@@ -377,25 +416,22 @@ const ServiceDetailsPage = () => {
                         </div>
                         <div className="flex justify-between mt-1">
                           <span className="text-gray-700">Prix pour {customDuration} jours:</span>
-                          <span className="font-bold text-blue-600">
-                            {calculatedPrice.toFixed(2)} €
-                          </span>
+                          <FormattedPrice price={calculatedPrice} duration={customDuration} />
                         </div>
                       </>
                     )}
                   </div>
                   
-                  {/* Bouton avec couleur assortie au service */}
                   <button
                     onClick={handleSubscribe}
                     className="w-full text-white font-bold py-3 px-4 rounded-lg transition-colors mt-4"
                     style={{
                       background: bgColor,
-                      // Assombrir légèrement au survol
-                      ':hover': {
-                        background: darkerBgColor
-                      }
+                      // Ajouter une transition pour le survol
+                      transition: 'background-color 0.2s'
                     }}
+                    onMouseOver={(e) => e.currentTarget.style.background = darkerBgColor}
+                    onMouseOut={(e) => e.currentTarget.style.background = bgColor}
                   >
                     {isRecurring 
                       ? `S'abonner mensuellement à ${selectedSubscription.price.toFixed(2)} € / mois` 
@@ -407,8 +443,8 @@ const ServiceDetailsPage = () => {
           </div>
         )}
         
-        {/* Autres informations supplémentaires */}
-        <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Informations supplémentaires */}
+        <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-6">
           <div className="bg-white rounded-xl shadow-md p-6">
             <div className="flex items-center mb-4">
               <div className="bg-blue-100 p-2 rounded-md">

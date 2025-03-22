@@ -2,13 +2,14 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Fonctions d'aide
+    // Fonctions d'aide améliorées
     function isAuthenticated() {
       return request.auth != null;
     }
     
     function isAdmin() {
       return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
     
@@ -16,25 +17,38 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
     
+    // Rate limiting - empêche les attaques par force brute
+    function notRateLimited() {
+      return request.time > resource.data.lastRequest + duration.value(1, 's');
+    }
+    
+    // Validation des données
+    function validUserData(userData) {
+      return userData.size() <= 10 && 
+        userData.name is string && 
+        (userData.role == 'user' || userData.role == 'admin');
+    }
+    
     // Règles pour les utilisateurs
     match /users/{userId} {
       allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
-      allow create: if isAuthenticated() && isOwner(userId);
-      allow update: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow create: if isAuthenticated() && isOwner(userId) && validUserData(request.resource.data);
+      allow update: if isAuthenticated() && 
+        (isOwner(userId) && validUserData(request.resource.data) || isAdmin());
       allow delete: if isAdmin();
     }
     
     // Règles pour les services
     match /services/{serviceId} {
-      // Tout le monde peut lire les services
-      allow read: if true;
+      // Tout le monde peut lire les services actifs
+      allow read: if resource.data.isActive == true || isAdmin();
       // Seul l'administrateur peut créer, modifier ou supprimer des services
       allow write: if isAdmin();
       
       // Règles pour les abonnements au sein d'un service
       match /subscriptions/{subscriptionId} {
-        // Tout le monde peut lire les abonnements
-        allow read: if true;
+        // Tout le monde peut lire les abonnements actifs
+        allow read: if resource.data.isActive == true || isAdmin();
         // Seul l'administrateur peut créer, modifier ou supprimer des abonnements
         allow write: if isAdmin();
       }
@@ -55,6 +69,14 @@ service cloud.firestore {
       
       // Seuls les administrateurs peuvent supprimer les abonnements utilisateur
       allow delete: if isAdmin();
+    }
+    
+    // Règles pour les notifications
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && request.auth.uid == resource.data.userId;
+      allow update: if isAuthenticated() && request.auth.uid == resource.data.userId;
+      allow delete: if isAuthenticated() && request.auth.uid == resource.data.userId;
+      allow create: if isAdmin();
     }
     
     // Par défaut, refuser l'accès

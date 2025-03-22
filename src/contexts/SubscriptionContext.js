@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
+import React, { createContext, useState, useEffect, useContext, useCallback, useRef } from 'react';
 import { firestore } from '../firebase';
 import { useAuth } from './AuthContext';
 
@@ -10,37 +10,60 @@ export function useSubscriptions() {
 
 export function SubscriptionProvider({ children }) {
   const [mainServices, setMainServices] = useState([]);
-  const [availableSubscriptions, setAvailableSubscriptions] = useState([]);
   const [userSubscriptions, setUserSubscriptions] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingStates, setLoadingStates] = useState({
+    services: true,
+    userSubscriptions: true,
+    operations: false
+  });
   const [error, setError] = useState(null);
   const { currentUser } = useAuth();
+  
+  // Cache pour les abonnements disponibles par service
+  const availableSubscriptionsCache = useRef({});
+  
+  // Fonction pour mettre à jour les états de chargement individuellement
+  const setLoading = useCallback((key, value) => {
+    setLoadingStates(prev => ({ ...prev, [key]: value }));
+  }, []);
+  
+  // Calcul de l'état de chargement global
+  const loading = loadingStates.services || loadingStates.userSubscriptions || loadingStates.operations;
 
-  // Récupérer les services principaux disponibles avec une gestion d'erreur améliorée
+  // Récupérer les services principaux disponibles avec mise en cache
   useEffect(() => {
     let isMounted = true;
+    let unsubscribe = () => {};
+    
     const fetchServices = async () => {
       try {
-        setLoading(true);
-        const servicesSnapshot = await firestore.collection('services').get();
+        setLoading('services', true);
         
-        if (!isMounted) return;
-        
-        const servicesData = servicesSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        
-        setMainServices(servicesData);
-        setError(null);
+        // Établir un écouteur en temps réel pour les services
+        unsubscribe = firestore.collection('services')
+          .onSnapshot(snapshot => {
+            if (!isMounted) return;
+            
+            const servicesData = snapshot.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            }));
+            
+            setMainServices(servicesData);
+            setError(null);
+            setLoading('services', false);
+          }, err => {
+            console.error("Erreur lors du chargement des services:", err);
+            if (isMounted) {
+              setError(err.message || "Erreur de chargement des services");
+              setLoading('services', false);
+            }
+          });
       } catch (err) {
-        console.error("Erreur lors du chargement des services:", err);
+        console.error("Erreur lors de la configuration de l'écouteur des services:", err);
         if (isMounted) {
-          setError(err.message || "Erreur de chargement des services");
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
+          setError(err.message || "Erreur de configuration des services");
+          setLoading('services', false);
         }
       }
     };
@@ -50,56 +73,85 @@ export function SubscriptionProvider({ children }) {
     // Nettoyage pour éviter les fuites de mémoire
     return () => {
       isMounted = false;
+      unsubscribe();
     };
-  }, []);
+  }, [setLoading]);
 
   // Récupérer les abonnements de l'utilisateur avec gestion des erreurs améliorée
   useEffect(() => {
     let unsubscribe = () => {};
+    let isMounted = true;
     
     if (!currentUser) {
       setUserSubscriptions([]);
-      setLoading(false);
+      setLoading('userSubscriptions', false);
       return () => {};
     }
 
     try {
-      setLoading(true);
+      setLoading('userSubscriptions', true);
       
+      // Écouter les changements dans les abonnements de l'utilisateur
       unsubscribe = firestore.collection('userSubscriptions')
         .where('userId', '==', currentUser.uid)
         .onSnapshot(snapshot => {
+          if (!isMounted) return;
+          
           const subscriptionsData = snapshot.docs.map(doc => ({
             id: doc.id,
             ...doc.data()
           }));
+          
+          // Trier les abonnements par date d'expiration (les plus proches d'abord)
+          subscriptionsData.sort((a, b) => {
+            const dateA = a.expiryDate?.toDate() || new Date(0);
+            const dateB = b.expiryDate?.toDate() || new Date(0);
+            return dateA - dateB;
+          });
+          
           setUserSubscriptions(subscriptionsData);
-          setLoading(false);
+          setLoading('userSubscriptions', false);
           setError(null);
         }, err => {
           console.error("Erreur lors de l'écoute des abonnements:", err);
-          setError(err.message || "Erreur de chargement des abonnements utilisateur");
-          setLoading(false);
+          if (isMounted) {
+            setError(err.message || "Erreur de chargement des abonnements utilisateur");
+            setLoading('userSubscriptions', false);
+          }
         });
     } catch (err) {
       console.error("Erreur lors de la configuration de l'écoute des abonnements:", err);
-      setError(err.message || "Erreur de configuration des abonnements");
-      setLoading(false);
+      if (isMounted) {
+        setError(err.message || "Erreur de configuration des abonnements");
+        setLoading('userSubscriptions', false);
+      }
     }
 
     // Nettoyage à la désinscription
-    return () => unsubscribe();
-  }, [currentUser]);
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, [currentUser, setLoading]);
 
-  // Obtenir les abonnements disponibles pour un service avec une meilleure validation
+  // Obtenir les abonnements disponibles pour un service avec mise en cache
   const getAvailableSubscriptions = useCallback(async (serviceId) => {
     if (!serviceId) {
       setError("ID de service manquant");
       return [];
     }
     
+    // Vérifier d'abord si nous avons des données en cache
+    const cacheKey = `service_${serviceId}`;
+    const cacheEntry = availableSubscriptionsCache.current[cacheKey];
+    
+    // Si les données en cache sont récentes (moins de 5 minutes), on les utilise
+    if (cacheEntry && (Date.now() - cacheEntry.timestamp) < 5 * 60 * 1000) {
+      return cacheEntry.data;
+    }
+    
     try {
-      setLoading(true);
+      setLoading('operations', true);
       
       // Vérifier d'abord si le service existe
       const serviceDoc = await firestore.collection('services').doc(serviceId).get();
@@ -124,17 +176,22 @@ export function SubscriptionProvider({ children }) {
         }))
         .filter(sub => (sub.currentUsers || 0) < (sub.maxUsers || 0));
       
-      setAvailableSubscriptions(availableSubs);
+      // Mettre en cache les résultats
+      availableSubscriptionsCache.current[cacheKey] = {
+        data: availableSubs,
+        timestamp: Date.now()
+      };
+      
       setError(null);
-      setLoading(false);
+      setLoading('operations', false);
       return availableSubs;
     } catch (error) {
       console.error('Erreur lors de la récupération des abonnements:', error);
       setError(error.message || "Erreur de récupération des abonnements disponibles");
-      setLoading(false);
+      setLoading('operations', false);
       return [];
     }
-  }, []);
+  }, [setLoading]);
 
   // Calculer le prix proratisé avec une logique plus robuste
   const calculateProRatedPrice = useCallback((basePrice, duration) => {
@@ -163,7 +220,7 @@ export function SubscriptionProvider({ children }) {
     }
     
     try {
-      setLoading(true);
+      setLoading('operations', true);
       
       // Récupérer les détails du service
       const serviceDoc = await firestore.collection('services').doc(serviceId).get();
@@ -266,50 +323,98 @@ export function SubscriptionProvider({ children }) {
         
         transaction.set(userSubscriptionRef, userSubscriptionData);
         
+        // Invalider le cache pour ce service
+        delete availableSubscriptionsCache.current[`service_${serviceId}`];
+        
         return {
           userSubscriptionId: userSubscriptionRef.id,
           ...userSubscriptionData
         };
+      }).finally(() => {
+        setLoading('operations', false);
       });
     } catch (error) {
       console.error('Erreur lors de l\'achat de l\'abonnement:', error);
       setError(error.message || "Erreur lors de l'achat de l'abonnement");
+      setLoading('operations', false);
       throw error;
-    } finally {
-      setLoading(false);
     }
-  }, [calculateProRatedPrice, currentUser]);
+  }, [calculateProRatedPrice, currentUser, setLoading]);
 
-  // Admin Functions - avec validation améliorée
+  // Fonction pour rafraîchir les services
+  const refreshServices = useCallback(async () => {
+    try {
+      setLoading('services', true);
+      
+      // Vider le cache des abonnements
+      availableSubscriptionsCache.current = {};
+      
+      const servicesSnapshot = await firestore.collection('services').get();
+      
+      const servicesData = servicesSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      
+      setMainServices(servicesData);
+      setError(null);
+    } catch (err) {
+      console.error("Erreur lors du rechargement des services:", err);
+      setError(err.message || "Erreur de rechargement des services");
+    } finally {
+      setLoading('services', false);
+    }
+  }, [setLoading]);
+
+  // Fonction pour nettoyer les erreurs
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
+
+  // === Fonctions d'administration ===
+  
+  // Ajouter un service
   const addService = useCallback(async (serviceData) => {
     if (!serviceData || !serviceData.name) {
       throw new Error("Données de service invalides");
     }
     
     try {
+      setLoading('operations', true);
+      
       // Validation des données requises
       if (!serviceData.name || !serviceData.description) {
         throw new Error("Le nom et la description sont requis");
       }
       
-      return firestore.collection('services').add({
+      const result = await firestore.collection('services').add({
         ...serviceData,
         createdAt: new Date(),
         updatedAt: new Date()
       });
+      
+      // Rafraîchir automatiquement la liste des services
+      refreshServices();
+      
+      return result;
     } catch (error) {
       console.error('Erreur lors de l\'ajout du service:', error);
       setError(error.message || "Erreur lors de l'ajout du service");
       throw error;
+    } finally {
+      setLoading('operations', false);
     }
-  }, []);
+  }, [refreshServices, setLoading]);
 
+  // Mettre à jour un service
   const updateService = useCallback(async (serviceId, serviceData) => {
     if (!serviceId || !serviceData) {
       throw new Error("ID de service ou données manquants");
     }
     
     try {
+      setLoading('operations', true);
+      
       // Vérifier si le service existe
       const serviceDoc = await firestore.collection('services').doc(serviceId).get();
       
@@ -317,23 +422,33 @@ export function SubscriptionProvider({ children }) {
         throw new Error("Service non trouvé");
       }
       
-      return firestore.collection('services').doc(serviceId).update({
+      await firestore.collection('services').doc(serviceId).update({
         ...serviceData,
         updatedAt: new Date()
       });
+      
+      // Rafraîchir automatiquement la liste des services
+      refreshServices();
+      
+      return true;
     } catch (error) {
       console.error('Erreur lors de la mise à jour du service:', error);
       setError(error.message || "Erreur lors de la mise à jour du service");
       throw error;
+    } finally {
+      setLoading('operations', false);
     }
-  }, []);
+  }, [refreshServices, setLoading]);
 
+  // Supprimer un service
   const deleteService = useCallback(async (serviceId) => {
     if (!serviceId) {
       throw new Error("ID de service manquant");
     }
     
     try {
+      setLoading('operations', true);
+      
       // Vérifier si le service existe
       const serviceDoc = await firestore.collection('services').doc(serviceId).get();
       
@@ -341,20 +456,49 @@ export function SubscriptionProvider({ children }) {
         throw new Error("Service non trouvé");
       }
       
-      return firestore.collection('services').doc(serviceId).delete();
+      // Récupérer tous les abonnements de ce service
+      const subscriptionsSnapshot = await firestore
+        .collection('services')
+        .doc(serviceId)
+        .collection('subscriptions')
+        .get();
+      
+      // Utiliser un batch pour supprimer tous les abonnements et le service
+      const batch = firestore.batch();
+      
+      subscriptionsSnapshot.docs.forEach(doc => {
+        batch.delete(doc.ref);
+      });
+      
+      batch.delete(firestore.collection('services').doc(serviceId));
+      
+      await batch.commit();
+      
+      // Rafraîchir automatiquement la liste des services
+      refreshServices();
+      
+      // Invalider le cache pour ce service
+      delete availableSubscriptionsCache.current[`service_${serviceId}`];
+      
+      return true;
     } catch (error) {
       console.error('Erreur lors de la suppression du service:', error);
       setError(error.message || "Erreur lors de la suppression du service");
       throw error;
+    } finally {
+      setLoading('operations', false);
     }
-  }, []);
+  }, [refreshServices, setLoading]);
 
+  // Ajouter un abonnement à un service
   const addSubscription = useCallback(async (serviceId, subscriptionData) => {
     if (!serviceId || !subscriptionData) {
       throw new Error("ID de service ou données d'abonnement manquants");
     }
     
     try {
+      setLoading('operations', true);
+      
       // Vérifier si le service existe
       const serviceDoc = await firestore.collection('services').doc(serviceId).get();
       
@@ -367,7 +511,7 @@ export function SubscriptionProvider({ children }) {
         throw new Error("Nom, prix et nombre maximum d'utilisateurs requis");
       }
       
-      return firestore
+      const result = await firestore
         .collection('services')
         .doc(serviceId)
         .collection('subscriptions')
@@ -378,19 +522,29 @@ export function SubscriptionProvider({ children }) {
           createdAt: new Date(),
           updatedAt: new Date()
         });
+      
+      // Invalider le cache pour ce service
+      delete availableSubscriptionsCache.current[`service_${serviceId}`];
+      
+      return result;
     } catch (error) {
       console.error('Erreur lors de l\'ajout de l\'abonnement:', error);
       setError(error.message || "Erreur lors de l'ajout de l'abonnement");
       throw error;
+    } finally {
+      setLoading('operations', false);
     }
-  }, []);
+  }, [setLoading]);
 
+  // Mettre à jour un abonnement
   const updateSubscription = useCallback(async (serviceId, subscriptionId, subscriptionData) => {
     if (!serviceId || !subscriptionId || !subscriptionData) {
       throw new Error("Paramètres manquants pour la mise à jour de l'abonnement");
     }
     
     try {
+      setLoading('operations', true);
+      
       // Vérifier si l'abonnement existe
       const subscriptionDoc = await firestore
         .collection('services')
@@ -403,7 +557,7 @@ export function SubscriptionProvider({ children }) {
         throw new Error("Abonnement non trouvé");
       }
       
-      return firestore
+      await firestore
         .collection('services')
         .doc(serviceId)
         .collection('subscriptions')
@@ -412,19 +566,29 @@ export function SubscriptionProvider({ children }) {
           ...subscriptionData,
           updatedAt: new Date()
         });
+      
+      // Invalider le cache pour ce service
+      delete availableSubscriptionsCache.current[`service_${serviceId}`];
+      
+      return true;
     } catch (error) {
       console.error('Erreur lors de la mise à jour de l\'abonnement:', error);
       setError(error.message || "Erreur lors de la mise à jour de l'abonnement");
       throw error;
+    } finally {
+      setLoading('operations', false);
     }
-  }, []);
+  }, [setLoading]);
 
+  // Supprimer un abonnement
   const deleteSubscription = useCallback(async (serviceId, subscriptionId) => {
     if (!serviceId || !subscriptionId) {
       throw new Error("ID de service ou d'abonnement manquant");
     }
     
     try {
+      setLoading('operations', true);
+      
       // Vérifier si l'abonnement existe
       const subscriptionDoc = await firestore
         .collection('services')
@@ -444,48 +608,29 @@ export function SubscriptionProvider({ children }) {
         throw new Error("Impossible de supprimer un abonnement avec des utilisateurs actifs");
       }
       
-      return firestore
+      await firestore
         .collection('services')
         .doc(serviceId)
         .collection('subscriptions')
         .doc(subscriptionId)
         .delete();
+      
+      // Invalider le cache pour ce service
+      delete availableSubscriptionsCache.current[`service_${serviceId}`];
+      
+      return true;
     } catch (error) {
       console.error('Erreur lors de la suppression de l\'abonnement:', error);
       setError(error.message || "Erreur lors de la suppression de l'abonnement");
       throw error;
-    }
-  }, []);
-
-  // Fonction pour rafraîchir les services
-  const refreshServices = useCallback(async () => {
-    try {
-      setLoading(true);
-      const servicesSnapshot = await firestore.collection('services').get();
-      
-      const servicesData = servicesSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      
-      setMainServices(servicesData);
-      setError(null);
-    } catch (err) {
-      console.error("Erreur lors du rechargement des services:", err);
-      setError(err.message || "Erreur de rechargement des services");
     } finally {
-      setLoading(false);
+      setLoading('operations', false);
     }
-  }, []);
+  }, [setLoading]);
 
-  // Fonction pour nettoyer les erreurs
-  const clearError = useCallback(() => {
-    setError(null);
-  }, []);
-
+  // Valeur du contexte à exposer
   const value = {
     mainServices,
-    availableSubscriptions,
     userSubscriptions,
     loading,
     error,
@@ -494,7 +639,7 @@ export function SubscriptionProvider({ children }) {
     calculateProRatedPrice,
     refreshServices,
     clearError,
-    // Admin functions
+    // Fonctions d'administration
     addService,
     updateService,
     deleteService,
