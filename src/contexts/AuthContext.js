@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, useContext, useCallback, useRef } from 'react';
+import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
 import { auth, firestore } from '../firebase';
 
 // Fonction utilitaire pour traduire les codes d'erreur Firebase en messages d'erreur français
@@ -44,44 +44,14 @@ export function useAuth() {
 
 export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
-  const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState('user');
   const [error, setError] = useState(null);
-  
-  // Référence au dernier délai de déconnexion programmé
-  const logoutTimeoutRef = useRef(null);
-  
-  // Cache pour stocker les données utilisateur
-  const userDataCache = useRef({});
-  
-  // État de connexion pour détecter les déconnexions réseau
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-  
-  // Surveiller les changements d'état de connexion
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
 
   // Fonction d'inscription avec meilleure gestion des erreurs
   const register = useCallback(async (email, password, name) => {
     if (!email || !password || !name) {
       const errorMessage = "Tous les champs sont requis.";
-      setError(errorMessage);
-      throw new Error(errorMessage);
-    }
-    
-    if (!isOnline) {
-      const errorMessage = "Une connexion Internet est nécessaire pour créer un compte.";
       setError(errorMessage);
       throw new Error(errorMessage);
     }
@@ -99,18 +69,8 @@ export function AuthProvider({ children }) {
         name,
         email,
         role: 'user',
-        createdAt: new Date(),
-        lastLogin: new Date()
+        createdAt: new Date()
       });
-      
-      // Mettre à jour les données dans le cache
-      userDataCache.current[result.user.uid] = {
-        name,
-        email,
-        role: 'user',
-        createdAt: new Date(),
-        lastLogin: new Date()
-      };
       
       return result.user;
     } catch (error) {
@@ -119,7 +79,7 @@ export function AuthProvider({ children }) {
       setError(errorMessage);
       throw new Error(errorMessage);
     }
-  }, [isOnline]);
+  }, []);
 
   // Fonction de connexion avec meilleure gestion des erreurs
   const login = useCallback(async (email, password) => {
@@ -129,22 +89,9 @@ export function AuthProvider({ children }) {
       throw new Error(errorMessage);
     }
     
-    if (!isOnline) {
-      const errorMessage = "Une connexion Internet est nécessaire pour vous connecter.";
-      setError(errorMessage);
-      throw new Error(errorMessage);
-    }
-    
     try {
       setError(null);
-      const result = await auth.signInWithEmailAndPassword(email, password);
-      
-      // Mettre à jour la date de dernière connexion
-      await firestore.collection('users').doc(result.user.uid).update({
-        lastLogin: new Date()
-      });
-      
-      return result;
+      return await auth.signInWithEmailAndPassword(email, password);
     } catch (error) {
       // Pour des raisons de sécurité, on ne précise pas si c'est le mot de passe ou l'email qui est incorrect
       let errorMessage = 'Email ou mot de passe incorrect.';
@@ -156,89 +103,24 @@ export function AuthProvider({ children }) {
       setError(errorMessage);
       throw new Error(errorMessage);
     }
-  }, [isOnline]);
+  }, []);
 
-  // Fonction de déconnexion avec gestion des erreurs et nettoyage des timeouts
+  // Fonction de déconnexion avec gestion des erreurs
   const logout = useCallback(async () => {
     try {
       setError(null);
-      
-      // Effacer tout délai de déconnexion programmé
-      if (logoutTimeoutRef.current) {
-        clearTimeout(logoutTimeoutRef.current);
-        logoutTimeoutRef.current = null;
-      }
-      
       await auth.signOut();
-      
-      // Vider le cache utilisateur lors de la déconnexion
-      userDataCache.current = {};
-      setUserProfile(null);
     } catch (error) {
       const errorMessage = 'Échec de la déconnexion. Veuillez réessayer.';
       setError(errorMessage);
       throw new Error(errorMessage);
     }
   }, []);
-  
-  // Fonction pour programmer une déconnexion automatique après un certain temps d'inactivité
-  const scheduleAutoLogout = useCallback((inactivityTime = 60 * 60 * 1000) => { // 1 heure par défaut
-    // Effacer un éventuel délai précédent
-    if (logoutTimeoutRef.current) {
-      clearTimeout(logoutTimeoutRef.current);
-    }
-    
-    // Programmer la déconnexion
-    logoutTimeoutRef.current = setTimeout(() => {
-      logout();
-    }, inactivityTime);
-  }, [logout]);
-  
-  // Réinitialiser le délai de déconnexion lors d'une activité utilisateur
-  const resetAutoLogout = useCallback(() => {
-    if (currentUser && logoutTimeoutRef.current) {
-      scheduleAutoLogout();
-    }
-  }, [currentUser, scheduleAutoLogout]);
-  
-  // Ajouter des événements pour détecter l'activité utilisateur
-  useEffect(() => {
-    if (!currentUser) return;
-    
-    const activityEvents = ['mousedown', 'keydown', 'touchstart', 'scroll'];
-    
-    const handleActivity = () => {
-      resetAutoLogout();
-    };
-    
-    activityEvents.forEach(event => {
-      window.addEventListener(event, handleActivity);
-    });
-    
-    // Initialiser le délai de déconnexion automatique
-    scheduleAutoLogout();
-    
-    return () => {
-      activityEvents.forEach(event => {
-        window.removeEventListener(event, handleActivity);
-      });
-      
-      if (logoutTimeoutRef.current) {
-        clearTimeout(logoutTimeoutRef.current);
-      }
-    };
-  }, [currentUser, resetAutoLogout, scheduleAutoLogout]);
 
   // Fonction pour réinitialiser le mot de passe
   const resetPassword = useCallback(async (email) => {
     if (!email) {
       const errorMessage = "L'adresse email est requise.";
-      setError(errorMessage);
-      throw new Error(errorMessage);
-    }
-    
-    if (!isOnline) {
-      const errorMessage = "Une connexion Internet est nécessaire pour réinitialiser votre mot de passe.";
       setError(errorMessage);
       throw new Error(errorMessage);
     }
@@ -252,38 +134,6 @@ export function AuthProvider({ children }) {
       setError(errorMessage);
       throw new Error(errorMessage);
     }
-  }, [isOnline]);
-
-  // Fonction pour récupérer le profil utilisateur avec mise en cache
-  const getUserProfile = useCallback(async (userId) => {
-    if (!userId) return null;
-    
-    // Vérifier si nous avons les données en cache et si elles sont récentes (moins de 5 minutes)
-    const cachedData = userDataCache.current[userId];
-    if (cachedData && cachedData.timestamp && (Date.now() - cachedData.timestamp < 5 * 60 * 1000)) {
-      return cachedData;
-    }
-    
-    try {
-      const userDoc = await firestore.collection('users').doc(userId).get();
-      
-      if (!userDoc.exists) {
-        return null;
-      }
-      
-      const userData = userDoc.data();
-      
-      // Mettre à jour le cache avec les nouvelles données et un timestamp
-      userDataCache.current[userId] = {
-        ...userData,
-        timestamp: Date.now()
-      };
-      
-      return userData;
-    } catch (error) {
-      console.error('Erreur lors de la récupération du profil utilisateur:', error);
-      return null;
-    }
   }, []);
 
   // Fonction pour mettre à jour le profil utilisateur
@@ -294,10 +144,6 @@ export function AuthProvider({ children }) {
       // Vérifier si l'utilisateur est connecté
       if (!currentUser) {
         throw new Error('Vous devez être connecté pour effectuer cette action.');
-      }
-      
-      if (!isOnline) {
-        throw new Error('Une connexion Internet est nécessaire pour mettre à jour votre profil.');
       }
       
       const updates = {
@@ -333,18 +179,6 @@ export function AuthProvider({ children }) {
       // Seulement mettre à jour si des données ont changé
       if (Object.keys(updates).length > 1) { // Plus de 1 car updatedAt est toujours présent
         await firestore.collection('users').doc(currentUser.uid).update(updates);
-        
-        // Mettre à jour le cache
-        if (userDataCache.current[currentUser.uid]) {
-          userDataCache.current[currentUser.uid] = {
-            ...userDataCache.current[currentUser.uid],
-            ...updates,
-            timestamp: Date.now()
-          };
-        }
-        
-        // Mettre à jour le profil dans l'état
-        setUserProfile(prev => prev ? { ...prev, ...updates } : null);
       }
       
       return true;
@@ -353,7 +187,7 @@ export function AuthProvider({ children }) {
       setError(errorMessage);
       throw new Error(errorMessage);
     }
-  }, [currentUser, isOnline]);
+  }, [currentUser]);
 
   // Fonction pour mettre à jour le mot de passe de l'utilisateur
   const updatePassword = useCallback(async (currentPassword, newPassword) => {
@@ -365,12 +199,6 @@ export function AuthProvider({ children }) {
     
     if (newPassword.length < 6) {
       const errorMessage = "Le nouveau mot de passe doit contenir au moins 6 caractères.";
-      setError(errorMessage);
-      throw new Error(errorMessage);
-    }
-    
-    if (!isOnline) {
-      const errorMessage = "Une connexion Internet est nécessaire pour mettre à jour votre mot de passe.";
       setError(errorMessage);
       throw new Error(errorMessage);
     }
@@ -394,11 +222,6 @@ export function AuthProvider({ children }) {
       // Mettre à jour le mot de passe
       await currentUser.updatePassword(newPassword);
       
-      // Mettre à jour la date de modification du mot de passe dans Firestore
-      await firestore.collection('users').doc(currentUser.uid).update({
-        passwordUpdatedAt: new Date()
-      });
-      
       return true;
     } catch (error) {
       if (error.code === 'auth/wrong-password') {
@@ -411,83 +234,52 @@ export function AuthProvider({ children }) {
         throw new Error(errorMessage);
       }
     }
-  }, [currentUser, isOnline]);
+  }, [currentUser]);
 
   // Effet pour écouter les changements d'authentification
   useEffect(() => {
-    let isMounted = true;
-    
     const unsubscribe = auth.onAuthStateChanged(async user => {
       try {
         if (user) {
-          // Récupérer les données utilisateur depuis Firestore ou le cache
-          let userData = await getUserProfile(user.uid);
+          // Récupérer les données utilisateur depuis Firestore
+          const userDoc = await firestore.collection('users').doc(user.uid).get();
           
-          if (!isMounted) return;
-          
-          if (userData) {
+          if (userDoc.exists) {
             // Définir le rôle de l'utilisateur
-            setUserRole(userData.role || 'user');
-            setUserProfile(userData);
+            setUserRole(userDoc.data().role || 'user');
           } else {
             // Créer un document utilisateur s'il n'existe pas encore
-            const newUserData = {
+            await firestore.collection('users').doc(user.uid).set({
               name: user.displayName || '',
               email: user.email,
               role: 'user',
-              createdAt: new Date(),
-              lastLogin: new Date()
-            };
-            
-            await firestore.collection('users').doc(user.uid).set(newUserData);
-            
-            if (!isMounted) return;
-            
+              createdAt: new Date()
+            });
             setUserRole('user');
-            setUserProfile(newUserData);
-            
-            // Mettre à jour le cache
-            userDataCache.current[user.uid] = {
-              ...newUserData,
-              timestamp: Date.now()
-            };
           }
         } else {
           // Réinitialiser le rôle si déconnecté
-          if (!isMounted) return;
-          
           setUserRole('user');
-          setUserProfile(null);
         }
         
         // Mettre à jour l'utilisateur et l'état de chargement
-        if (isMounted) {
-          setCurrentUser(user);
-          setLoading(false);
-          setError(null);
-        }
+        setCurrentUser(user);
+        setLoading(false);
       } catch (error) {
         console.error('Erreur lors du chargement des données utilisateur:', error);
-        if (isMounted) {
-          setUserRole('user');
-          setCurrentUser(user);
-          setLoading(false);
-          setError(translateFirebaseError(error.code) || error.message);
-        }
+        setUserRole('user');
+        setCurrentUser(user);
+        setLoading(false);
       }
     });
 
     // Nettoyage de l'écouteur lors du démontage du composant
-    return () => {
-      isMounted = false;
-      unsubscribe();
-    };
-  }, [getUserProfile]);
+    return unsubscribe;
+  }, []);
 
   // Valeurs exposées par le contexte
   const value = {
     currentUser,
-    userProfile,
     userRole,
     isAdmin: userRole === 'admin',
     login,
@@ -498,8 +290,6 @@ export function AuthProvider({ children }) {
     updatePassword,
     loading,
     error,
-    isOnline,
-    getUserProfile,
     clearError: () => setError(null)
   };
 

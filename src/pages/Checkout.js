@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { useStripe as useStripeContext } from '../contexts/StripeContext';
@@ -6,91 +6,35 @@ import { useSubscriptions } from '../contexts/SubscriptionContext';
 import { useAuth } from '../contexts/AuthContext';
 import { firestore } from '../firebase';
 
-// Composant pour l'état de chargement
-const LoadingSpinner = ({ message }) => (
-  <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-12 px-4 flex justify-center">
-    <div className="flex flex-col items-center">
-      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4"></div>
-      <p className="text-gray-600">{message || 'Chargement...'}</p>
-    </div>
-  </div>
-);
-
-// Composant pour l'état d'erreur
-const ErrorState = ({ error, backLink }) => (
-  <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-12 px-4">
-    <div className="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden">
-      <div className="p-8">
-        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6" role="alert">
-          <p className="font-bold">Erreur</p>
-          <p>{error}</p>
-        </div>
-        <Link 
-          to={backLink || "/services"} 
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
-        >
-          {backLink === "/services" ? "Retour aux services" : "Retour"}
-        </Link>
-      </div>
-    </div>
-  </div>
-);
-
 const Checkout = () => {
   const { serviceId, subscriptionId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
   
-  // États
+  // Récupérer les paramètres de l'URL
+  const searchParams = new URLSearchParams(location.search);
+  const duration = parseInt(searchParams.get('duration') || '30');
+  const isRecurring = searchParams.get('recurring') === 'true';
+  
+  const { currentUser } = useAuth();
+  const { createPaymentIntent, confirmPayment, confirmRecurringPayment, processing } = useStripeContext();
+  const { purchaseSubscription, calculateProRatedPrice } = useSubscriptions();
+  
   const [service, setService] = useState(null);
   const [subscription, setSubscription] = useState(null);
   const [error, setError] = useState(null);
   const [clientSecret, setClientSecret] = useState('');
   const [cardComplete, setCardComplete] = useState(false);
-  const [loadingState, setLoadingState] = useState({
-    initialLoad: true,
-    paymentProcessing: false
-  });
+  const [loading, setLoading] = useState(true);
+  const [paymentProcessing, setPaymentProcessing] = useState(false);
+  const [proratedPrice, setProratedPrice] = useState(0);
   const [isSetupIntent, setIsSetupIntent] = useState(false);
-  const [availabilityCheckedAt, setAvailabilityCheckedAt] = useState(null);
   
-  // Récupérer les paramètres de l'URL
-  const searchParams = new URLSearchParams(location.search);
-  const duration = parseInt(searchParams.get('duration') || '30', 10);
-  const isRecurring = searchParams.get('recurring') === 'true';
-
-  // Hooks
-  const { currentUser } = useAuth();
-  const { createPaymentIntent, confirmPayment, confirmRecurringPayment, processing } = useStripeContext();
-  const { purchaseSubscription, calculateProRatedPrice } = useSubscriptions();
   const stripe = useStripe();
   const elements = useElements();
-  
-  // Prix proratisé mémorisé
-  const proratedPrice = useMemo(() => {
-    if (!subscription) return 0;
-    
-    return isRecurring
-      ? subscription.price
-      : calculateProRatedPrice(subscription.price, duration);
-  }, [subscription, isRecurring, duration, calculateProRatedPrice]);
-  
-  // États de chargement dérivés
-  const isLoading = loadingState.initialLoad;
-  const isProcessing = loadingState.paymentProcessing || processing;
-  
-  // Définir un état de chargement spécifique
-  const setLoading = useCallback((key, value) => {
-    setLoadingState(prev => ({ ...prev, [key]: value }));
-  }, []);
 
-  // Vérifier si l'abonnement est toujours disponible avec mise en cache des résultats
-  const checkSubscriptionAvailability = useCallback(async (force = false) => {
-    // Si nous avons vérifié récemment (moins de 10 secondes) et que ce n'est pas forcé, on utilise le résultat précédent
-    if (availabilityCheckedAt && !force && (Date.now() - availabilityCheckedAt < 10000)) {
-      return true;
-    }
-    
+  // Vérifier si l'abonnement est toujours disponible
+  const checkSubscriptionAvailability = useCallback(async () => {
     try {
       // Vérifier si l'abonnement existe et a des places disponibles
       const subscriptionDoc = await firestore
@@ -110,9 +54,6 @@ const Checkout = () => {
         throw new Error("Cet abonnement est complet. Veuillez en choisir un autre.");
       }
       
-      // Mettre à jour la date de dernière vérification
-      setAvailabilityCheckedAt(Date.now());
-      
       return true;
     } catch (err) {
       setError(err.message);
@@ -120,29 +61,17 @@ const Checkout = () => {
     }
   }, [serviceId, subscriptionId]);
 
-  // Chargement initial des données
   useEffect(() => {
-    let isMounted = true;
-    
     const fetchData = async () => {
       try {
-        setLoading('initialLoad', true);
-        
-        // Vérifier la disponibilité de l'abonnement
-        const isAvailable = await checkSubscriptionAvailability(true);
-        if (!isAvailable) {
-          setLoading('initialLoad', false);
-          return;
-        }
+        setLoading(true);
         
         // Récupérer les informations du service
         const serviceDoc = await firestore.collection('services').doc(serviceId).get();
         
-        if (!isMounted) return;
-        
         if (!serviceDoc.exists) {
           setError("Service non trouvé");
-          setLoading('initialLoad', false);
+          setLoading(false);
           return;
         }
         
@@ -151,7 +80,6 @@ const Checkout = () => {
           ...serviceDoc.data()
         };
         
-        if (!isMounted) return;
         setService(serviceData);
         
         // Récupérer les informations de l'abonnement
@@ -162,11 +90,9 @@ const Checkout = () => {
           .doc(subscriptionId)
           .get();
         
-        if (!isMounted) return;
-        
         if (!subscriptionDoc.exists) {
           setError("Abonnement non trouvé");
-          setLoading('initialLoad', false);
+          setLoading(false);
           return;
         }
         
@@ -178,19 +104,17 @@ const Checkout = () => {
         // Vérifier si l'abonnement est complet
         if (subscriptionData.currentUsers >= subscriptionData.maxUsers) {
           setError("Cet abonnement est complet. Veuillez en choisir un autre.");
-          setLoading('initialLoad', false);
+          setLoading(false);
           return;
         }
         
-        if (!isMounted) return;
         setSubscription(subscriptionData);
         
-        // Calculer le prix proratisé pour les durées uniques et créer l'intention de paiement
+        // Calculer le prix proratisé pour les durées uniques
         const prorated = isRecurring 
           ? subscriptionData.price 
           : calculateProRatedPrice(subscriptionData.price, duration);
-        
-        if (!isMounted) return;
+        setProratedPrice(prorated);
         
         // Créer l'intention de paiement avec le prix proratisé
         const { clientSecret, isSetupIntent: isSetup } = await createPaymentIntent(
@@ -201,37 +125,20 @@ const Checkout = () => {
           isRecurring
         );
         
-        if (!isMounted) return;
-        
         setClientSecret(clientSecret);
         setIsSetupIntent(isSetup || false);
-        setLoading('initialLoad', false);
+        
+        setLoading(false);
       } catch (err) {
         console.error("Erreur lors du chargement:", err);
-        if (isMounted) {
-          setError(`Une erreur est survenue: ${err.message}`);
-          setLoading('initialLoad', false);
-        }
+        setError(`Une erreur est survenue: ${err.message}`);
+        setLoading(false);
       }
     };
     
     fetchData();
-    
-    return () => {
-      isMounted = false;
-    };
-  }, [
-    serviceId, 
-    subscriptionId, 
-    duration, 
-    isRecurring, 
-    createPaymentIntent, 
-    calculateProRatedPrice, 
-    checkSubscriptionAvailability,
-    setLoading
-  ]);
+  }, [serviceId, subscriptionId, duration, isRecurring, createPaymentIntent, calculateProRatedPrice]);
 
-  // Gérer la soumission du formulaire de paiement
   const handleSubmit = async (event) => {
     event.preventDefault();
     
@@ -241,12 +148,12 @@ const Checkout = () => {
     }
     
     // Vérifier une nouvelle fois si l'abonnement est disponible
-    const isAvailable = await checkSubscriptionAvailability(true);
+    const isAvailable = await checkSubscriptionAvailability();
     if (!isAvailable) {
       return;
     }
     
-    setLoading('paymentProcessing', true);
+    setPaymentProcessing(true);
     setError(null);
     
     const cardElement = elements.getElement(CardElement);
@@ -266,7 +173,7 @@ const Checkout = () => {
         
         if (setupError) {
           setError(`Erreur de configuration: ${setupError.message}`);
-          setLoading('paymentProcessing', false);
+          setPaymentProcessing(false);
           return;
         }
         
@@ -289,11 +196,11 @@ const Checkout = () => {
             });
           } else {
             setError('Échec de la configuration de l\'abonnement récurrent. Veuillez réessayer.');
-            setLoading('paymentProcessing', false);
+            setPaymentProcessing(false);
           }
         } catch (err) {
           setError(`Erreur lors de la finalisation: ${err.message}`);
-          setLoading('paymentProcessing', false);
+          setPaymentProcessing(false);
         }
       } else {
         // Traiter un paiement unique
@@ -309,16 +216,16 @@ const Checkout = () => {
         
         if (error) {
           setError(`Erreur de paiement: ${error.message}`);
-          setLoading('paymentProcessing', false);
+          setPaymentProcessing(false);
           return;
         }
         
         if (paymentIntent.status === 'succeeded') {
           try {
             // Vérifier une dernière fois la disponibilité avant d'enregistrer
-            const isStillAvailable = await checkSubscriptionAvailability(true);
+            const isStillAvailable = await checkSubscriptionAvailability();
             if (!isStillAvailable) {
-              setLoading('paymentProcessing', false);
+              setPaymentProcessing(false);
               return;
             }
             
@@ -351,20 +258,19 @@ const Checkout = () => {
             } else {
               setError(`Erreur lors de la finalisation: ${err.message}`);
             }
-            setLoading('paymentProcessing', false);
+            setPaymentProcessing(false);
           }
         } else {
           setError("Le statut du paiement est indéterminé. Veuillez vérifier votre compte ou contacter le support.");
-          setLoading('paymentProcessing', false);
+          setPaymentProcessing(false);
         }
       }
     } catch (err) {
       setError(`Une erreur est survenue: ${err.message}`);
-      setLoading('paymentProcessing', false);
+      setPaymentProcessing(false);
     }
   };
 
-  // Gérer les changements de l'élément de carte
   const handleCardChange = (event) => {
     setCardComplete(event.complete);
     if (event.error) {
@@ -374,19 +280,41 @@ const Checkout = () => {
     }
   };
 
-  // Afficher l'état de chargement
-  if (isLoading) {
-    return <LoadingSpinner message="Préparation du paiement..." />;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-12 px-4 flex justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      </div>
+    );
   }
   
-  // Afficher l'état d'erreur si nous n'avons pas pu charger les données principales
   if (error && (!service || !subscription)) {
-    return <ErrorState error={error} backLink="/services" />;
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-12 px-4">
+        <div className="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden">
+          <div className="p-8">
+            <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6" role="alert">
+              <p className="font-bold">Erreur</p>
+              <p>{error}</p>
+            </div>
+            <Link 
+              to="/services" 
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
+            >
+              Retour aux services
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
   }
   
-  // Si le service ou l'abonnement ne sont pas chargés correctement
   if (!service || !subscription) {
-    return <ErrorState error="Service ou abonnement non trouvé" backLink="/services" />;
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-12 px-4 flex justify-center">
+        <div className="text-center py-10">Service ou abonnement non trouvé</div>
+      </div>
+    );
   }
 
   return (
@@ -493,7 +421,7 @@ const Checkout = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Détails de la carte
                 </label>
-                <div className={`border ${cardComplete ? 'border-green-300' : 'border-gray-300'} rounded-lg p-4 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 transition-colors`}>
+                <div className="border border-gray-300 rounded-lg p-4 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500">
                   <CardElement
                     options={{
                       style: {
@@ -508,7 +436,6 @@ const Checkout = () => {
                           color: '#9e2146',
                         },
                       },
-                      hidePostalCode: true
                     }}
                     onChange={handleCardChange}
                   />
@@ -520,12 +447,10 @@ const Checkout = () => {
               
               <button
                 type="submit"
-                disabled={isProcessing || !cardComplete || !stripe || !clientSecret}
-                className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors ${
-                  (isProcessing || !cardComplete || !stripe || !clientSecret) ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
+                disabled={paymentProcessing || processing || !cardComplete || !stripe || !clientSecret}
+                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isProcessing ? (
+                {paymentProcessing || processing ? (
                   <>
                     <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>

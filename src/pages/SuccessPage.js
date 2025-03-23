@@ -1,11 +1,30 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useLocation, Link, Navigate } from 'react-router-dom';
 import { firestore } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 
-// Composant pour le bouton de copie
-const CopyButton = ({ text, field, copyStatus, setCopyStatus }) => {
-  const handleCopy = () => {
+const SuccessPage = () => {
+  const location = useLocation();
+  const { currentUser } = useAuth();
+  const [subscription, setSubscription] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [copyStatus, setCopyStatus] = useState({});
+
+  // Extraire les données d'état de navigation de manière sécurisée
+  const navigationState = location.state || {};
+  const { 
+    serviceId, 
+    serviceName, 
+    userSubscriptionId, 
+    subscriptionName,
+    duration,
+    price,
+    isRecurring = false
+  } = navigationState;
+
+  // Fonction pour copier du texte avec retour d'état
+  const copyToClipboard = useCallback((text, field) => {
     if (!text) return;
     
     navigator.clipboard.writeText(text)
@@ -19,142 +38,21 @@ const CopyButton = ({ text, field, copyStatus, setCopyStatus }) => {
       })
       .catch(err => {
         console.error('Erreur lors de la copie :', err);
+        setCopyStatus(prev => ({ ...prev, [field]: false }));
       });
-  };
-
-  return (
-    <button 
-      onClick={handleCopy}
-      className="text-blue-600 hover:text-blue-800 text-sm flex items-center"
-      aria-label={`Copier ${field}`}
-    >
-      {copyStatus[field] ? (
-        <>
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
-          Copié
-        </>
-      ) : "Copier"}
-    </button>
-  );
-};
-
-// Composant pour afficher un détail d'abonnement avec option de copie
-const SubscriptionDetail = ({ label, value, isCopyable = false, isLink = false, copyStatus, setCopyStatus }) => {
-  if (!value) return null;
+  }, []);
   
-  return (
-    <div>
-      <p className="text-sm text-gray-500">{label}</p>
-      <div className="flex items-center justify-between">
-        {isLink ? (
-          <a 
-            href={value} 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="text-blue-600 hover:text-blue-800 break-all mr-2"
-          >
-            {value}
-          </a>
-        ) : (
-          <p className="font-medium text-gray-800 break-all mr-2">{value}</p>
-        )}
-        
-        {isCopyable && (
-          <CopyButton 
-            text={value} 
-            field={label.toLowerCase().replace(/\s+/g, '_')} 
-            copyStatus={copyStatus} 
-            setCopyStatus={setCopyStatus}
-          />
-        )}
-      </div>
-    </div>
-  );
-};
-
-// État de chargement
-const LoadingState = () => (
-  <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-12 px-4 flex justify-center items-center">
-    <div className="flex flex-col items-center">
-      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4"></div>
-      <p className="text-gray-600">Finalisation de votre abonnement...</p>
-    </div>
-  </div>
-);
-
-// État d'erreur
-const ErrorState = ({ error }) => (
-  <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-12 px-4">
-    <div className="max-w-md mx-auto">
-      <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-        <div className="bg-red-500 px-6 py-8 text-center">
-          <div className="rounded-full bg-white p-2 mx-auto w-12 h-12 flex items-center justify-center mb-4">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <h1 className="text-2xl font-bold text-white mb-2">Erreur</h1>
-          <p className="text-white/90">{error}</p>
-        </div>
-        
-        <div className="p-6">
-          <Link 
-            to="/dashboard" 
-            className="flex-1 inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
-          >
-            Retour au tableau de bord
-          </Link>
-        </div>
-      </div>
-    </div>
-  </div>
-);
-
-const SuccessPage = () => {
-  const location = useLocation();
-  const { currentUser } = useAuth();
-  const [subscription, setSubscription] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [copyStatus, setCopyStatus] = useState({});
-
-  // Extraire les données d'état de navigation de manière sécurisée
-  const navigationState = useMemo(() => location.state || {}, [location.state]);
-  
-  const { 
-    serviceId, 
-    serviceName, 
-    userSubscriptionId, 
-    subscriptionName,
-    duration,
-    price,
-    isRecurring = false
-  } = navigationState;
-
-  // Vérifier que nous avons les données minimales nécessaires
-  const hasMinimumData = useMemo(() => {
-    return Boolean(serviceId || userSubscriptionId);
-  }, [serviceId, userSubscriptionId]);
-
   useEffect(() => {
-    let isMounted = true;
-    
     const fetchSubscription = async () => {
       if (!currentUser) {
-        if (isMounted) {
-          setLoading(false);
-          setError("Vous devez être connecté pour accéder à cette page");
-        }
+        setLoading(false);
+        setError("Vous devez être connecté pour accéder à cette page");
         return;
       }
       
-      // Si pas de data essentielle pour récupérer l'abonnement
-      if (!hasMinimumData) {
-        if (isMounted) {
-          setLoading(false);
-        }
+      // Si pas de serviceId, on ne peut pas récupérer l'abonnement
+      if (!serviceId) {
+        setLoading(false);
         return;
       }
       
@@ -169,58 +67,48 @@ const SuccessPage = () => {
             .get();
             
           if (subscriptionDoc.exists) {
-            if (isMounted) {
-              setSubscription({
-                id: subscriptionDoc.id,
-                ...subscriptionDoc.data()
-              });
-              setLoading(false);
-            }
+            setSubscription({
+              id: subscriptionDoc.id,
+              ...subscriptionDoc.data()
+            });
+            setLoading(false);
             return;
           }
         }
         
         // Sinon, on essaie de trouver le dernier abonnement créé pour ce service
-        if (serviceId) {
-          const subscriptionsSnapshot = await firestore
-            .collection('userSubscriptions')
-            .where('userId', '==', currentUser.uid)
-            .where('serviceId', '==', serviceId)
-            .orderBy('startDate', 'desc')
-            .limit(1)
-            .get();
-          
-          if (!subscriptionsSnapshot.empty) {
-            if (isMounted) {
-              setSubscription({
-                id: subscriptionsSnapshot.docs[0].id,
-                ...subscriptionsSnapshot.docs[0].data()
-              });
-            }
-          }
+        const subscriptionsSnapshot = await firestore
+          .collection('userSubscriptions')
+          .where('userId', '==', currentUser.uid)
+          .where('serviceId', '==', serviceId)
+          .orderBy('startDate', 'desc')
+          .limit(1)
+          .get();
+        
+        if (!subscriptionsSnapshot.empty) {
+          setSubscription({
+            id: subscriptionsSnapshot.docs[0].id,
+            ...subscriptionsSnapshot.docs[0].data()
+          });
+        } else {
+          // Aucun abonnement trouvé, mais ce n'est pas une erreur
+          // (les informations d'accès sont peut-être encore en cours de préparation)
+          console.log("Aucun abonnement trouvé pour ce service");
         }
         
-        if (isMounted) {
-          setLoading(false);
-        }
+        setLoading(false);
       } catch (error) {
         console.error('Error fetching subscription:', error);
-        if (isMounted) {
-          setError("Erreur lors de la récupération des informations d'abonnement");
-          setLoading(false);
-        }
+        setError("Erreur lors de la récupération des informations d'abonnement");
+        setLoading(false);
       }
     };
     
     fetchSubscription();
-    
-    return () => {
-      isMounted = false;
-    };
-  }, [currentUser, serviceId, userSubscriptionId, hasMinimumData]);
+  }, [currentUser, serviceId, userSubscriptionId]);
 
   // Formatage de la date en français
-  const formatDate = useCallback((date) => {
+  const formatDate = (date) => {
     if (!date) return 'Date inconnue';
     
     try {
@@ -233,41 +121,49 @@ const SuccessPage = () => {
       console.error("Erreur lors du formatage de la date:", e);
       return 'Date invalide';
     }
-  }, []);
-
-  // Valider les données disponibles - soit de la navigation, soit de l'abonnement chargé
-  const displayData = useMemo(() => {
-    if (subscription) {
-      return {
-        serviceName: subscription.serviceName,
-        subscriptionName: subscription.subscriptionName,
-        duration: subscription.duration,
-        price: subscription.proratedPrice || subscription.originalPrice,
-        isRecurring: subscription.isRecurring
-      };
-    }
-    
-    return {
-      serviceName,
-      subscriptionName,
-      duration,
-      price,
-      isRecurring
-    };
-  }, [subscription, serviceName, subscriptionName, duration, price, isRecurring]);
+  };
 
   if (loading) {
-    return <LoadingState />;
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-12 px-4 flex justify-center items-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      </div>
+    );
   }
   
-  // Redirect si pas de données essentielles
-  if (!hasMinimumData) {
+  // Redirect si pas de serviceId ou d'état de navigation
+  if (!serviceId && !userSubscriptionId) {
     return <Navigate to="/dashboard" replace />;
   }
   
   // Cas d'erreur (accès non autorisé, etc.)
   if (error) {
-    return <ErrorState error={error} />;
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 py-12 px-4">
+        <div className="max-w-md mx-auto">
+          <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+            <div className="bg-red-500 px-6 py-8 text-center">
+              <div className="rounded-full bg-white p-2 mx-auto w-12 h-12 flex items-center justify-center mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h1 className="text-2xl font-bold text-white mb-2">Erreur</h1>
+              <p className="text-white/90">{error}</p>
+            </div>
+            
+            <div className="p-6">
+              <Link 
+                to="/dashboard" 
+                className="flex-1 inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
+              >
+                Retour au tableau de bord
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -284,7 +180,7 @@ const SuccessPage = () => {
             </div>
             <h1 className="text-2xl font-bold text-white mb-2">Paiement réussi !</h1>
             <p className="text-white/90">
-              Votre abonnement à {displayData.serviceName || 'votre service'} a été activé avec succès.
+              Votre abonnement à {serviceName || (subscription?.serviceName || 'votre service')} a été activé avec succès.
             </p>
           </div>
           
@@ -296,46 +192,110 @@ const SuccessPage = () => {
                 <div className="bg-gray-50 p-4 rounded-lg space-y-4">
                   {subscription.accessType === 'account' && (
                     <>
-                      <SubscriptionDetail 
-                        label="Email d'accès" 
-                        value={subscription.email} 
-                        isCopyable={true} 
-                        copyStatus={copyStatus} 
-                        setCopyStatus={setCopyStatus}
-                      />
+                      <div>
+                        <p className="text-sm text-gray-500">Email d'accès</p>
+                        <div className="flex items-center justify-between">
+                          <p className="font-medium text-gray-800">{subscription.email}</p>
+                          <button 
+                            onClick={() => copyToClipboard(subscription.email, 'email')}
+                            className="text-blue-600 hover:text-blue-800 text-sm flex items-center"
+                          >
+                            {copyStatus.email ? (
+                              <>
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                                Copié
+                              </>
+                            ) : "Copier"}
+                          </button>
+                        </div>
+                      </div>
                       
-                      <SubscriptionDetail 
-                        label="Mot de passe" 
-                        value={subscription.password} 
-                        isCopyable={true} 
-                        copyStatus={copyStatus} 
-                        setCopyStatus={setCopyStatus}
-                      />
+                      <div>
+                        <p className="text-sm text-gray-500">Mot de passe</p>
+                        <div className="flex items-center justify-between">
+                          <p className="font-medium text-gray-800">{subscription.password}</p>
+                          <button 
+                            onClick={() => copyToClipboard(subscription.password, 'password')}
+                            className="text-blue-600 hover:text-blue-800 text-sm flex items-center"
+                          >
+                            {copyStatus.password ? (
+                              <>
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                                Copié
+                              </>
+                            ) : "Copier"}
+                          </button>
+                        </div>
+                      </div>
                     </>
                   )}
                   
-                  <SubscriptionDetail 
-                    label="Lien d'accès" 
-                    value={subscription.accessLink} 
-                    isCopyable={true} 
-                    isLink={true} 
-                    copyStatus={copyStatus} 
-                    setCopyStatus={setCopyStatus}
-                  />
+                  {subscription.accessLink && (
+                    <div>
+                      <p className="text-sm text-gray-500">Lien d'accès</p>
+                      <div className="flex items-center justify-between">
+                        <a 
+                          href={subscription.accessLink} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:text-blue-800 break-all"
+                        >
+                          {subscription.accessLink}
+                        </a>
+                        <button 
+                          onClick={() => copyToClipboard(subscription.accessLink, 'accessLink')}
+                          className="text-blue-600 hover:text-blue-800 text-sm ml-2 whitespace-nowrap flex items-center"
+                        >
+                          {copyStatus.accessLink ? (
+                            <>
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                              Copié
+                            </>
+                          ) : "Copier"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   
-                  <SubscriptionDetail 
-                    label="Lien d'invitation" 
-                    value={subscription.invitationLink} 
-                    isCopyable={true} 
-                    isLink={true} 
-                    copyStatus={copyStatus} 
-                    setCopyStatus={setCopyStatus}
-                  />
+                  {subscription.invitationLink && (
+                    <div>
+                      <p className="text-sm text-gray-500">Lien d'invitation</p>
+                      <div className="flex items-center justify-between">
+                        <a 
+                          href={subscription.invitationLink} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:text-blue-800 break-all"
+                        >
+                          {subscription.invitationLink}
+                        </a>
+                        <button 
+                          onClick={() => copyToClipboard(subscription.invitationLink, 'invitationLink')}
+                          className="text-blue-600 hover:text-blue-800 text-sm ml-2 whitespace-nowrap flex items-center"
+                        >
+                          {copyStatus.invitationLink ? (
+                            <>
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                              Copié
+                            </>
+                          ) : "Copier"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   
                   <div className="pt-2 border-t border-gray-200">
                     <p className="text-sm text-gray-500">Type d'abonnement</p>
                     <p className="font-medium text-gray-800">
-                      {displayData.isRecurring ? "Mensuel récurrent" : `Durée unique (${displayData.duration || 30} jours)`}
+                      {isRecurring ? "Mensuel récurrent" : `Durée unique (${duration || subscription.duration || 30} jours)`}
                     </p>
                   </div>
                   
@@ -346,11 +306,11 @@ const SuccessPage = () => {
                     </p>
                   </div>
                   
-                  {displayData.price && (
+                  {price && (
                     <div>
                       <p className="text-sm text-gray-500">Montant payé</p>
                       <p className="font-medium text-gray-800">
-                        {parseFloat(displayData.price).toFixed(2)} €
+                        {price.toFixed(2)} €
                       </p>
                     </div>
                   )}
