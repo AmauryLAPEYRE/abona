@@ -1,9 +1,108 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { firestore } from '../firebase';
+import { useSubscriptions } from '../contexts/SubscriptionContext';
 
 const LandingPage = () => {
   const { currentUser, logout } = useAuth();
+  const [popularServices, setPopularServices] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const { calculateProRatedPrice } = useSubscriptions();
+
+  // Fonction pour obtenir la couleur de fond du service
+  const getServiceBgColor = (service) => {
+    // Utiliser uniquement la couleur stockée dans la base de données
+    return service.bgColor || '#3B82F6'; // Couleur par défaut (bleu) si non définie
+  };
+
+  // Fonction pour déterminer la couleur du texte en fonction de la luminosité du fond
+  const getTextColorForBackground = (bgColor) => {
+    // Si pas de couleur ou format non valide, retourner blanc (sécurité)
+    if (!bgColor || !bgColor.startsWith('#')) return 'white';
+    
+    // Convertir la couleur hex en RGB
+    let r, g, b;
+    
+    // Format #RRGGBB
+    if (bgColor.length === 7) {
+      r = parseInt(bgColor.substring(1, 3), 16);
+      g = parseInt(bgColor.substring(3, 5), 16);
+      b = parseInt(bgColor.substring(5, 7), 16);
+    } 
+    // Format #RGB
+    else if (bgColor.length === 4) {
+      r = parseInt(bgColor.substring(1, 2) + bgColor.substring(1, 2), 16);
+      g = parseInt(bgColor.substring(2, 3) + bgColor.substring(2, 3), 16);
+      b = parseInt(bgColor.substring(3, 4) + bgColor.substring(3, 4), 16);
+    } else {
+      return 'white';
+    }
+    
+    // Calculer la luminosité (formule standard)
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    
+    // Si la luminosité est élevée (fond clair), retourner du texte foncé
+    return luminance > 0.5 ? '#111827' : 'white';
+  };
+
+  // Chargement des services populaires
+  useEffect(() => {
+    const fetchPopularServices = async () => {
+      try {
+        setLoading(true);
+        // Récupérer tous les services
+        const servicesSnapshot = await firestore.collection('services').get();
+        
+        let servicesData = servicesSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          subscriptionCount: 0,
+          totalUsers: 0
+        }));
+        
+        // Pour chaque service, récupérer ses abonnements et compter les utilisateurs
+        await Promise.all(
+          servicesData.map(async (service) => {
+            const subscriptionsSnapshot = await firestore
+              .collection('services')
+              .doc(service.id)
+              .collection('subscriptions')
+              .get();
+            
+            service.subscriptionCount = subscriptionsSnapshot.size;
+            
+            let totalUsers = 0;
+            subscriptionsSnapshot.docs.forEach(subDoc => {
+              const subData = subDoc.data();
+              totalUsers += (subData.currentUsers || 0);
+            });
+            
+            service.totalUsers = totalUsers;
+            
+            // Prendre par défaut le prix du premier abonnement disponible (si aucun defaultPrice n'est défini)
+            if (!service.price && subscriptionsSnapshot.docs.length > 0) {
+              const firstSub = subscriptionsSnapshot.docs[0].data();
+              service.price = firstSub.price || 0;
+              service.duration = firstSub.duration || 30;
+            }
+          })
+        );
+        
+        // Trier les services par nombre d'utilisateurs (pour déterminer les plus populaires)
+        servicesData.sort((a, b) => b.totalUsers - a.totalUsers);
+        
+        // Prendre les 3 premiers services (ou moins s'il y en a moins)
+        setPopularServices(servicesData.slice(0, 3));
+        setLoading(false);
+      } catch (error) {
+        console.error("Erreur lors de la récupération des services populaires:", error);
+        setLoading(false);
+      }
+    };
+    
+    fetchPopularServices();
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -12,6 +111,32 @@ const LandingPage = () => {
       console.error('Erreur de déconnexion', error);
     }
   };
+
+  // Fonction pour formater le prix avec 2 décimales
+  const formatPrice = (price) => {
+    return typeof price === 'number' ? price.toFixed(2) : '0.00';
+  };
+
+  // Fonction pour calculer le prix pro-raté
+  const calculateShortTermPrice = (price, duration, days) => {
+    if (!price || !days) return '0.00';
+    const proRatedPrice = calculateProRatedPrice ? calculateProRatedPrice(price, days) : (price / duration) * days;
+    return formatPrice(proRatedPrice);
+  };
+
+  // Rendu conditionnel pendant le chargement
+  if (loading && popularServices.length === 0) {
+    return (
+      <div className="bg-gradient-to-b from-gray-900 to-blue-900 text-white min-h-screen py-12">
+        <div className="container mx-auto px-4">
+          <h2 className="text-3xl md:text-4xl font-bold text-center mb-8">Chargement des services...</h2>
+          <div className="flex justify-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-gradient-to-b from-gray-900 to-blue-900 text-white min-h-screen">
@@ -128,76 +253,7 @@ const LandingPage = () => {
         </div>
       </div>
 
-      {/* Avantages */}
-      <div className="py-20">
-        <div className="container mx-auto px-4">
-          <h2 className="text-3xl md:text-4xl font-bold text-center mb-16">Pourquoi choisir Abona ?</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6 hover:shadow-lg hover:shadow-blue-500/10 transition-all duration-300">
-              <div className="text-blue-400 mb-4">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-bold mb-3">Gestion professionnelle</h3>
-              <p className="text-gray-300">Nous gérons directement tous les abonnements, contrairement aux plateformes où les utilisateurs partagent entre eux.</p>
-            </div>
-            
-            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6 hover:shadow-lg hover:shadow-blue-500/10 transition-all duration-300">
-              <div className="text-purple-400 mb-4">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-bold mb-3">Économies importantes</h3>
-              <p className="text-gray-300">Profitez de réductions allant jusqu'à 70% sur le prix normal des abonnements premium.</p>
-            </div>
-            
-            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6 hover:shadow-lg hover:shadow-blue-500/10 transition-all duration-300">
-              <div className="text-purple-400 mb-4">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-bold mb-3">Durée ultra-flexible</h3>
-              <p className="text-gray-300">Contrairement aux autres services, choisissez une durée de 2 jours, 1 semaine ou plus, et payez exactement au prorata. Idéal pour tester ou pour les besoins ponctuels.</p>
-            </div>
-            
-            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6 hover:shadow-lg hover:shadow-blue-500/10 transition-all duration-300">
-              <div className="text-green-400 mb-4">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-bold mb-3">Service fiable</h3>
-              <p className="text-gray-300">Fini les interruptions de service et les abonnements coupés : notre équipe assure la continuité de vos accès.</p>
-            </div>
-            
-            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6 hover:shadow-lg hover:shadow-blue-500/10 transition-all duration-300">
-              <div className="text-yellow-400 mb-4">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-bold mb-3">100% légal</h3>
-              <p className="text-gray-300">Tous nos comptes sont légitimement acquis auprès des fournisseurs de services, vous pouvez les utiliser en toute tranquillité.</p>
-            </div>
-            
-            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6 hover:shadow-lg hover:shadow-blue-500/10 transition-all duration-300">
-              <div className="text-red-400 mb-4">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-bold mb-3">Support réactif</h3>
-              <p className="text-gray-300">Une équipe support disponible 7j/7 pour vous aider en cas de problème avec vos accès.</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Services populaires */}
+      {/* Services populaires - SECTION DYNAMIQUE AVEC LOGOS ET FOND ADAPTATIF */}
       <div className="bg-white/5 backdrop-blur-md py-20">
         <div className="container mx-auto px-4">
           <h2 className="text-3xl md:text-4xl font-bold text-center mb-6">Nos services les plus populaires</h2>
@@ -206,59 +262,65 @@ const LandingPage = () => {
           </p>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-            <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-xl overflow-hidden hover:shadow-lg hover:shadow-blue-500/10 transition-all duration-300">
-              <div className="h-40 bg-gradient-to-r from-red-600 to-pink-600 flex items-center justify-center">
-                <h3 className="text-2xl font-bold">Netflix</h3>
+            {popularServices.length > 0 ? (
+              popularServices.map((service) => {
+                // Déterminer le prix d'origine pour l'affichage barré
+                const originalPrice = service.originalPrice || (service.price * 3);
+                
+                // Utiliser les données du service ou des valeurs par défaut
+                const shortTermDays = service.shortTermDays || 2;
+                const shortTermLabel = service.shortTermLabel || `${shortTermDays} jours`;
+                
+                const shortTermPrice = calculateShortTermPrice(service.price, service.duration || 30, shortTermDays);
+                
+                // Obtenir la couleur de fond du service
+                const bgColor = getServiceBgColor(service);
+                
+                // Déterminer la couleur du texte en fonction de la luminosité du fond
+                const textColor = getTextColorForBackground(bgColor);
+                
+                return (
+                  <div 
+                    key={service.id} 
+                    className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-xl overflow-hidden hover:shadow-lg hover:shadow-blue-500/10 transition-all duration-300"
+                  >
+                    <div 
+                      className="h-40 flex items-center justify-center p-4"
+                      style={{ backgroundColor: bgColor }}
+                    >
+                      {service.imageUrl ? (
+                        <img 
+                          src={service.imageUrl} 
+                          alt={service.name} 
+                          className="max-h-full max-w-full object-contain"
+                        />
+                      ) : (
+                        <h3 className="text-2xl font-bold" style={{ color: textColor }}>
+                          {service.name}
+                        </h3>
+                      )}
+                    </div>
+                    <div className="p-6">
+                      <p className="text-gray-300 mb-4 h-16 line-clamp-2">{service.description}</p>
+                      <div className="flex justify-between items-center">
+                        <span className="text-2xl font-bold">{formatPrice(service.price)}€</span>
+                        <span className="line-through text-gray-400">{formatPrice(originalPrice)}€</span>
+                      </div>
+                      <div className="mt-1 text-sm text-gray-400">par mois</div>
+                      <div className="mt-1 text-xs text-green-400">ou {shortTermPrice}€ pour {shortTermLabel}</div>
+                      <Link to={`/service/${service.id}`} className="mt-4 block text-center bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">
+                        Voir l'offre
+                      </Link>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              // Afficher un message si aucun service n'est trouvé
+              <div className="col-span-3 text-center py-8">
+                <p className="text-white/70">Aucun service disponible pour le moment. Revenez bientôt!</p>
               </div>
-              <div className="p-6">
-                <p className="text-gray-300 mb-4">Accès Premium à toutes les séries et films en Ultra HD sur 4 écrans</p>
-                <div className="flex justify-between items-center">
-                  <span className="text-2xl font-bold">5.99€</span>
-                  <span className="line-through text-gray-400">17.99€</span>
-                </div>
-                <div className="mt-1 text-sm text-gray-400">par mois</div>
-                <div className="mt-1 text-xs text-green-400">ou 0.99€ pour 2 jours</div>
-                <Link to="/services" className="mt-4 block text-center bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">
-                  Voir l'offre
-                </Link>
-              </div>
-            </div>
-            
-            <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-xl overflow-hidden hover:shadow-lg hover:shadow-blue-500/10 transition-all duration-300">
-              <div className="h-40 bg-gradient-to-r from-green-600 to-teal-600 flex items-center justify-center">
-                <h3 className="text-2xl font-bold">Spotify</h3>
-              </div>
-              <div className="p-6">
-                <p className="text-gray-300 mb-4">Musique sans pub, téléchargement hors ligne et qualité supérieure</p>
-                <div className="flex justify-between items-center">
-                  <span className="text-2xl font-bold">3.99€</span>
-                  <span className="line-through text-gray-400">9.99€</span>
-                </div>
-                <div className="mt-1 text-sm text-gray-400">par mois</div>
-                <div className="mt-1 text-xs text-green-400">ou 0.66€ pour 5 jours</div>
-                <Link to="/services" className="mt-4 block text-center bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">
-                  Voir l'offre
-                </Link>
-              </div>
-            </div>
-            
-            <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-xl overflow-hidden hover:shadow-lg hover:shadow-blue-500/10 transition-all duration-300">
-              <div className="h-40 bg-gradient-to-r from-blue-600 to-indigo-600 flex items-center justify-center">
-                <h3 className="text-2xl font-bold">Disney+</h3>
-              </div>
-              <div className="p-6">
-                <p className="text-gray-300 mb-4">Tout le catalogue Disney, Marvel, Star Wars et National Geographic</p>
-                <div className="flex justify-between items-center">
-                  <span className="text-2xl font-bold">2.99€</span>
-                  <span className="line-through text-gray-400">8.99€</span>
-                </div>
-                <div className="mt-1 text-sm text-gray-400">par mois</div>
-                <div className="mt-1 text-xs text-green-400">ou 1.49€ pour 2 semaines</div>
-                <Link to="/services" className="mt-4 block text-center bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">
-                  Voir l'offre
-                </Link>
-              </div>
-            </div>
+            )}
           </div>
           
           <div className="text-center mt-12">

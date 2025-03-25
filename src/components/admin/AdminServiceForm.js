@@ -12,9 +12,10 @@ const AdminServiceForm = () => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [imageUrl, setImageUrl] = useState('');
-  const [price, setPrice] = useState('');
-  const [duration, setDuration] = useState('');
   const [category, setCategory] = useState('');
+  const [bgColor, setBgColor] = useState('#ffffff'); // Ajout du champ pour la couleur de fond
+  const [shortTermDays, setShortTermDays] = useState(2); // Jours pour l'offre courte
+  const [shortTermLabel, setShortTermLabel] = useState(''); // Libellé pour l'offre courte
   
   // États pour la gestion du formulaire
   const [loading, setLoading] = useState(false);
@@ -39,6 +40,23 @@ const AdminServiceForm = () => {
   const handleBlur = (field) => {
     setTouched(prev => ({ ...prev, [field]: true }));
   };
+  
+  // Mettre à jour automatiquement le libellé de l'offre courte
+  useEffect(() => {
+    if (!shortTermLabel || shortTermLabel === `${shortTermDays - 1} jours` || shortTermLabel === `1 jour` || shortTermLabel === `${shortTermDays} jours`) {
+      if (shortTermDays === 1) {
+        setShortTermLabel('1 jour');
+      } else if (shortTermDays === 7) {
+        setShortTermLabel('1 semaine');
+      } else if (shortTermDays === 14) {
+        setShortTermLabel('2 semaines');
+      } else if (shortTermDays === 30) {
+        setShortTermLabel('1 mois');
+      } else {
+        setShortTermLabel(`${shortTermDays} jours`);
+      }
+    }
+  }, [shortTermDays, shortTermLabel]);
   
   // Valider un champ spécifique
   const validateField = useCallback((field, value) => {
@@ -69,25 +87,23 @@ const AdminServiceForm = () => {
         }
         break;
         
-      case 'price':
-        if (!value) {
-          error = 'Le prix est requis';
-        } else if (isNaN(parseFloat(value)) || parseFloat(value) < 0) {
-          error = 'Le prix doit être un nombre positif';
-        }
-        break;
-        
-      case 'duration':
-        if (!value) {
-          error = 'La durée est requise';
-        } else if (isNaN(parseInt(value)) || parseInt(value) < 1) {
-          error = 'La durée doit être un nombre entier positif';
-        }
-        break;
-        
       case 'category':
         if (!value) {
           error = 'La catégorie est requise';
+        }
+        break;
+        
+      case 'bgColor':
+        if (!value) {
+          error = 'La couleur de fond est requise';
+        } else if (!value.match(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/)) {
+          error = 'La couleur doit être au format hexadécimal (#RRGGBB ou #RGB)';
+        }
+        break;
+        
+      case 'shortTermDays':
+        if (!value || isNaN(parseInt(value)) || parseInt(value) < 1) {
+          error = 'Le nombre de jours doit être un nombre positif';
         }
         break;
         
@@ -104,16 +120,16 @@ const AdminServiceForm = () => {
       name: validateField('name', name),
       description: validateField('description', description),
       imageUrl: validateField('imageUrl', imageUrl),
-      price: validateField('price', price),
-      duration: validateField('duration', duration),
-      category: validateField('category', category)
+      category: validateField('category', category),
+      bgColor: validateField('bgColor', bgColor),
+      shortTermDays: validateField('shortTermDays', shortTermDays)
     };
     
     setErrors(newErrors);
     
     // Le formulaire est valide si aucun champ n'a d'erreur
     return !Object.values(newErrors).some(error => error);
-  }, [name, description, imageUrl, price, duration, category, validateField]);
+  }, [name, description, imageUrl, category, bgColor, shortTermDays, validateField]);
   
   // Mettre à jour les erreurs lorsqu'un champ est modifié
   useEffect(() => {
@@ -129,16 +145,16 @@ const AdminServiceForm = () => {
   }, [imageUrl, touched.imageUrl, validateField]);
   
   useEffect(() => {
-    if (touched.price) setErrors(prev => ({ ...prev, price: validateField('price', price) }));
-  }, [price, touched.price, validateField]);
-  
-  useEffect(() => {
-    if (touched.duration) setErrors(prev => ({ ...prev, duration: validateField('duration', duration) }));
-  }, [duration, touched.duration, validateField]);
-  
-  useEffect(() => {
     if (touched.category) setErrors(prev => ({ ...prev, category: validateField('category', category) }));
   }, [category, touched.category, validateField]);
+  
+  useEffect(() => {
+    if (touched.bgColor) setErrors(prev => ({ ...prev, bgColor: validateField('bgColor', bgColor) }));
+  }, [bgColor, touched.bgColor, validateField]);
+  
+  useEffect(() => {
+    if (touched.shortTermDays) setErrors(prev => ({ ...prev, shortTermDays: validateField('shortTermDays', shortTermDays) }));
+  }, [shortTermDays, touched.shortTermDays, validateField]);
   
   // Charger les données du service en mode édition
   useEffect(() => {
@@ -157,12 +173,13 @@ const AdminServiceForm = () => {
           }
           
           const serviceData = serviceDoc.data();
-          setName(serviceData.name);
-          setDescription(serviceData.description);
+          setName(serviceData.name || '');
+          setDescription(serviceData.description || '');
           setImageUrl(serviceData.imageUrl || '');
-          setPrice(serviceData.price.toString());
-          setDuration(serviceData.duration.toString());
           setCategory(serviceData.category || 'Autre');
+          setBgColor(serviceData.bgColor || '#ffffff');
+          setShortTermDays(serviceData.shortTermDays || 2);
+          setShortTermLabel(serviceData.shortTermLabel || '');
           setLoading(false);
         } catch (err) {
           console.error("Erreur lors du chargement du service:", err);
@@ -184,9 +201,9 @@ const AdminServiceForm = () => {
       name: true,
       description: true,
       imageUrl: true,
-      price: true,
-      duration: true,
-      category: true
+      category: true,
+      bgColor: true,
+      shortTermDays: true
     });
     
     // Valider le formulaire avant soumission
@@ -200,9 +217,10 @@ const AdminServiceForm = () => {
       name,
       description,
       imageUrl: imageUrl || null,
-      price: parseFloat(price),
-      duration: parseInt(duration),
-      category
+      category,
+      bgColor,
+      shortTermDays: parseInt(shortTermDays),
+      shortTermLabel
     };
     
     try {
@@ -231,6 +249,14 @@ const AdminServiceForm = () => {
       <p className="mt-1 text-sm text-red-600">{errors[field]}</p>
     );
   };
+
+  // Aperçu de la couleur
+  const ColorPreview = () => (
+    <div 
+      className="w-8 h-8 rounded-md border border-gray-300 ml-2" 
+      style={{ backgroundColor: bgColor }}
+    ></div>
+  );
 
   if (loading && isEdit) {
     return (
@@ -315,65 +341,94 @@ const AdminServiceForm = () => {
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div>
-              <label htmlFor="price" className="block text-sm font-medium text-gray-700 mb-1">
-                Prix (€) <span className="text-red-500">*</span>
+              <label htmlFor="imageUrl" className="block text-sm font-medium text-gray-700 mb-1">
+                URL de l'image (logo)
               </label>
-              <div className="mt-1 relative rounded-md shadow-sm">
-                <input
-                  type="number"
-                  id="price"
-                  className={`${errors.price && touched.price ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'focus:ring-blue-500 focus:border-blue-500'} block w-full pl-3 pr-12 sm:text-sm border-gray-300 rounded-md`}
-                  placeholder="0.00"
-                  step="0.01"
-                  min="0"
-                  value={price}
-                  onChange={(e) => setPrice(e.target.value)}
-                  onBlur={() => handleBlur('price')}
-                  required
-                />
-                <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                  <span className="text-gray-500 sm:text-sm">€</span>
-                </div>
-              </div>
-              <ErrorMessage field="price" />
+              <input
+                type="url"
+                id="imageUrl"
+                className={`shadow-sm ${errors.imageUrl && touched.imageUrl ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'focus:ring-blue-500 focus:border-blue-500'} block w-full sm:text-sm border-gray-300 rounded-md`}
+                placeholder="https://exemple.com/image.jpg"
+                value={imageUrl}
+                onChange={(e) => setImageUrl(e.target.value)}
+                onBlur={() => handleBlur('imageUrl')}
+              />
+              <ErrorMessage field="imageUrl" />
+              <p className="mt-1 text-sm text-gray-500">
+                Laissez vide pour utiliser une icône générée automatiquement
+              </p>
             </div>
             
             <div>
-              <label htmlFor="duration" className="block text-sm font-medium text-gray-700 mb-1">
-                Durée (jours) <span className="text-red-500">*</span>
+              <label htmlFor="bgColor" className="block text-sm font-medium text-gray-700 mb-1">
+                Couleur de fond du logo <span className="text-red-500">*</span>
               </label>
-              <input
-                type="number"
-                id="duration"
-                className={`shadow-sm ${errors.duration && touched.duration ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'focus:ring-blue-500 focus:border-blue-500'} block w-full sm:text-sm border-gray-300 rounded-md`}
-                placeholder="30"
-                min="1"
-                value={duration}
-                onChange={(e) => setDuration(e.target.value)}
-                onBlur={() => handleBlur('duration')}
-                required
-              />
-              <ErrorMessage field="duration" />
+              <div className="flex items-center">
+                <input
+                  type="text"
+                  id="bgColor"
+                  className={`shadow-sm ${errors.bgColor && touched.bgColor ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'focus:ring-blue-500 focus:border-blue-500'} block w-full sm:text-sm border-gray-300 rounded-md`}
+                  placeholder="#FFFFFF"
+                  value={bgColor}
+                  onChange={(e) => setBgColor(e.target.value)}
+                  onBlur={() => handleBlur('bgColor')}
+                  required
+                />
+                <input
+                  type="color"
+                  id="bgColorPicker"
+                  className="ml-2 h-8 w-8 border-none cursor-pointer"
+                  value={bgColor}
+                  onChange={(e) => setBgColor(e.target.value)}
+                />
+                <ColorPreview />
+              </div>
+              <ErrorMessage field="bgColor" />
+              <p className="mt-1 text-sm text-gray-500">
+                Couleur de fond pour l'affichage du logo (format hexadécimal)
+              </p>
             </div>
           </div>
           
-          <div className="mb-6">
-            <label htmlFor="imageUrl" className="block text-sm font-medium text-gray-700 mb-1">
-              URL de l'image (optionnel)
-            </label>
-            <input
-              type="url"
-              id="imageUrl"
-              className={`shadow-sm ${errors.imageUrl && touched.imageUrl ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'focus:ring-blue-500 focus:border-blue-500'} block w-full sm:text-sm border-gray-300 rounded-md`}
-              placeholder="https://exemple.com/image.jpg"
-              value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
-              onBlur={() => handleBlur('imageUrl')}
-            />
-            <ErrorMessage field="imageUrl" />
-            <p className="mt-1 text-sm text-gray-500">
-              Laissez vide pour utiliser une icône générée automatiquement
-            </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <div>
+              <label htmlFor="shortTermDays" className="block text-sm font-medium text-gray-700 mb-1">
+                Jours pour l'offre courte <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="number"
+                id="shortTermDays"
+                className={`shadow-sm ${errors.shortTermDays && touched.shortTermDays ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'focus:ring-blue-500 focus:border-blue-500'} block w-full sm:text-sm border-gray-300 rounded-md`}
+                placeholder="2"
+                min="1"
+                max="30"
+                value={shortTermDays}
+                onChange={(e) => setShortTermDays(e.target.value)}
+                onBlur={() => handleBlur('shortTermDays')}
+                required
+              />
+              <ErrorMessage field="shortTermDays" />
+              <p className="mt-1 text-sm text-gray-500">
+                Nombre de jours pour l'offre de courte durée (1-30)
+              </p>
+            </div>
+            
+            <div>
+              <label htmlFor="shortTermLabel" className="block text-sm font-medium text-gray-700 mb-1">
+                Libellé pour l'offre courte
+              </label>
+              <input
+                type="text"
+                id="shortTermLabel"
+                className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                placeholder="2 jours"
+                value={shortTermLabel}
+                onChange={(e) => setShortTermLabel(e.target.value)}
+              />
+              <p className="mt-1 text-sm text-gray-500">
+                Texte affiché pour l'offre courte (ex: "2 jours", "1 semaine")
+              </p>
+            </div>
           </div>
           
           <div className="border-t border-gray-200 pt-6 flex justify-between">
