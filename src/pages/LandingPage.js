@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { firestore } from '../firebase';
 import { useSubscriptions } from '../contexts/SubscriptionContext';
+import { DISCOUNT_RATE, MAX_DURATION_DAYS, MIN_DURATION_DAYS } from '../constants';
+import { calculateDiscountedMonthly } from '../pricing';
 
 const LandingPage = () => {
   const { currentUser, logout } = useAuth();
@@ -198,7 +200,7 @@ const LandingPage = () => {
             Abona vous offre un accès direct à des services d'abonnement premium à prix réduit, sans les tracas du partage entre particuliers.
           </p>
           <p className="text-xl text-gray-300 mb-10 max-w-3xl mx-auto">
-            <span className="font-bold text-white">Exclusif :</span> Payez uniquement pour la durée dont vous avez besoin, de 2 jours à plusieurs mois.
+            <span className="font-bold text-white">-{DISCOUNT_RATE * 100}% sur tous les services.</span> Payez uniquement pour la durée dont vous avez besoin, de {MIN_DURATION_DAYS} à {MAX_DURATION_DAYS} jours. Ne payez plus pour de l'inactivité.
           </p>
           <div className="flex flex-col sm:flex-row justify-center gap-4">
             {currentUser ? (
@@ -264,13 +266,13 @@ const LandingPage = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
             {popularServices.length > 0 ? (
               popularServices.map((service) => {
-                // Déterminer le prix d'origine pour l'affichage barré
-                const originalPrice = service.originalPrice || (service.price * 3);
-                
-                // Utiliser les données du service ou des valeurs par défaut
-                const shortTermDays = service.shortTermDays || 2;
+                // Prix officiel = service.price, prix Abona = avec réduction
+                const discountedPrice = calculateDiscountedMonthly(service.price);
+
+                // Prix court terme (2 jours par défaut)
+                const shortTermDays = service.shortTermDays || MIN_DURATION_DAYS;
                 const shortTermLabel = service.shortTermLabel || `${shortTermDays} jours`;
-                
+
                 const shortTermPrice = calculateShortTermPrice(service.price, service.duration || 30, shortTermDays);
                 
                 // Obtenir la couleur de fond du service
@@ -303,10 +305,10 @@ const LandingPage = () => {
                     <div className="p-6">
                       <p className="text-gray-300 mb-4 h-16 line-clamp-2">{service.description}</p>
                       <div className="flex justify-between items-center">
-                        <span className="text-2xl font-bold">{formatPrice(service.price)}€</span>
-                        <span className="line-through text-gray-400">{formatPrice(originalPrice)}€</span>
+                        <span className="text-2xl font-bold text-green-400">{formatPrice(discountedPrice)}€</span>
+                        <span className="line-through text-gray-400">{formatPrice(service.price)}€</span>
                       </div>
-                      <div className="mt-1 text-sm text-gray-400">par mois</div>
+                      <div className="mt-1 text-sm text-gray-400">par mois <span className="text-green-400 font-semibold">(-{DISCOUNT_RATE * 100}%)</span></div>
                       <div className="mt-1 text-xs text-green-400">ou {shortTermPrice}€ pour {shortTermLabel}</div>
                       <Link to={`/service/${service.id}`} className="mt-4 block text-center bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">
                         Voir l'offre
@@ -342,29 +344,24 @@ const LandingPage = () => {
             À la différence des autres plateformes, Abona vous permet de payer uniquement pour la durée exacte dont vous avez besoin
           </p>
           
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-4xl mx-auto">
             <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-              <div className="text-2xl font-bold mb-1">2 jours</div>
+              <div className="text-2xl font-bold mb-1">{MIN_DURATION_DAYS} jours</div>
               <p className="text-sm mb-3">Pour un besoin ponctuel</p>
-              <div className="text-green-400 text-xl">à partir de 0.66€</div>
+              <div className="text-green-400 text-xl">le strict minimum</div>
             </div>
-            
-            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-              <div className="text-2xl font-bold mb-1">1 semaine</div>
-              <p className="text-sm mb-3">Pour un séjour court</p>
-              <div className="text-green-400 text-xl">à partir de 1.29€</div>
+
+            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 ring-2 ring-green-400">
+              <div className="text-xs text-green-400 font-semibold mb-1">POPULAIRE</div>
+              <div className="text-2xl font-bold mb-1">7 jours</div>
+              <p className="text-sm mb-3">Pour une semaine tranquille</p>
+              <div className="text-green-400 text-xl">le meilleur rapport</div>
             </div>
-            
+
             <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-              <div className="text-2xl font-bold mb-1">2 semaines</div>
-              <p className="text-sm mb-3">Pour les vacances</p>
-              <div className="text-green-400 text-xl">à partir de 1.99€</div>
-            </div>
-            
-            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
-              <div className="text-2xl font-bold mb-1">1 mois ou plus</div>
-              <p className="text-sm mb-3">Utilisation régulière</p>
-              <div className="text-green-400 text-xl">à partir de 2.99€</div>
+              <div className="text-2xl font-bold mb-1">{MAX_DURATION_DAYS} jours</div>
+              <p className="text-sm mb-3">Durée maximale</p>
+              <div className="text-green-400 text-xl">demi-mois complet</div>
             </div>
           </div>
         </div>

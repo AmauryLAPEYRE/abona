@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { calculateDiscountedMonthly } from '../pricing';
 
 const ServiceCard = ({ service }) => {
   const { currentUser } = useAuth();
@@ -31,7 +32,8 @@ const ServiceCard = ({ service }) => {
       <div className={`bg-gradient-to-r ${getBgColor()} h-24 relative p-6`}>
         <h2 className="text-xl font-bold text-white">{service.name}</h2>
         <div className="absolute right-4 bottom-4 bg-white/20 backdrop-blur-sm text-white rounded-full px-3 py-1 text-sm font-medium">
-          {service.price.toFixed(2)} €/mois
+          <span className="line-through opacity-70 mr-1">{service.price.toFixed(2)}€</span>
+          <span className="font-bold">{calculateDiscountedMonthly(service.price).toFixed(2)} €/mois</span>
         </div>
       </div>
       

@@ -1,6 +1,8 @@
 import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
 import { firestore } from '../firebase';
 import { useAuth } from './AuthContext';
+import { DAYS_IN_MONTH } from '../constants';
+import { calculatePrice, calculateDiscountedMonthly, clampDuration } from '../pricing';
 
 const SubscriptionContext = createContext();
 
@@ -136,20 +138,9 @@ export function SubscriptionProvider({ children }) {
     }
   }, []);
 
-  // Calculer le prix proratisé avec une logique plus robuste
+  // Délègue le calcul à la fonction pure partagée (src/pricing.js)
   const calculateProRatedPrice = useCallback((basePrice, duration) => {
-    if (!basePrice || !duration || basePrice <= 0 || duration <= 0) {
-      console.warn("Paramètres invalides pour le calcul du prix proratisé", { basePrice, duration });
-      return 0;
-    }
-    
-    const today = new Date();
-    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-    const dailyRate = basePrice / daysInMonth;
-    
-    // Limiter à 2 décimales et s'assurer que le résultat est un nombre
-    const result = parseFloat((dailyRate * duration).toFixed(2));
-    return isNaN(result) ? 0 : result;
+    return calculatePrice(basePrice, duration);
   }, []);
 
   // Acheter un abonnement avec une gestion des erreurs améliorée et une vérification en temps réel
@@ -193,12 +184,12 @@ export function SubscriptionProvider({ children }) {
         throw new Error('Cet abonnement est complet. Veuillez choisir un autre abonnement.');
       }
       
-      // Calculer le prix proratisé ou utiliser le prix mensuel complet
+      const safeDuration = isRecurring ? DAYS_IN_MONTH : clampDuration(duration);
       const startDate = new Date();
-      const expiryDate = new Date(startDate.getTime() + (duration * 24 * 60 * 60 * 1000));
-      const proratedPrice = isRecurring 
-        ? subscriptionData.price 
-        : calculateProRatedPrice(subscriptionData.price, duration);
+      const expiryDate = new Date(startDate.getTime() + (safeDuration * 24 * 60 * 60 * 1000));
+      const proratedPrice = isRecurring
+        ? calculateDiscountedMonthly(subscriptionData.price)
+        : calculatePrice(subscriptionData.price, safeDuration);
       
       if (proratedPrice <= 0) {
         throw new Error("Erreur de calcul du prix. Veuillez réessayer.");
@@ -260,7 +251,7 @@ export function SubscriptionProvider({ children }) {
           originalPrice: subscriptionData.price,
           proratedPrice: proratedPrice,
           duration: duration,
-          nextBillingDate: isRecurring ? new Date(startDate.getTime() + (30 * 24 * 60 * 60 * 1000)) : null,
+          nextBillingDate: isRecurring ? new Date(startDate.getTime() + (DAYS_IN_MONTH * 24 * 60 * 60 * 1000)) : null,
           createdAt: startDate
         };
         

@@ -3,6 +3,8 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { firestore } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { useSubscriptions } from '../contexts/SubscriptionContext';
+import { DISCOUNT_RATE, MAX_DURATION_DAYS, MIN_DURATION_DAYS } from '../constants';
+import { calculateDiscountedMonthly } from '../pricing';
 
 const ServiceDetailsPage = () => {
   const { serviceId } = useParams();
@@ -14,7 +16,7 @@ const ServiceDetailsPage = () => {
   const [service, setService] = useState(null);
   const [subscriptions, setSubscriptions] = useState([]);
   const [selectedSubscription, setSelectedSubscription] = useState(null);
-  const [customDuration, setCustomDuration] = useState(14);
+  const [customDuration, setCustomDuration] = useState(Math.min(7, MAX_DURATION_DAYS));
   const [isRecurring, setIsRecurring] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -106,7 +108,7 @@ const ServiceDetailsPage = () => {
       return;
     }
     
-    const duration = isRecurring ? 30 : customDuration;
+    const duration = isRecurring ? MAX_DURATION_DAYS : customDuration;
     navigate(`/checkout/${serviceId}/${selectedSubscription.id}?duration=${duration}&recurring=${isRecurring}`);
   }, [currentUser, serviceId, selectedSubscription, isRecurring, customDuration, navigate]);
   
@@ -247,8 +249,9 @@ const ServiceDetailsPage = () => {
                   <div className="flex justify-between items-start">
                     <h3 className="font-medium text-gray-800">{subscription.name}</h3>
                     <div className="text-right">
-                      <p className="text-lg font-bold text-blue-600">{subscription.price.toFixed(2)} €</p>
-                      <p className="text-xs text-gray-500">prix mensuel</p>
+                      <p className="text-sm text-gray-400 line-through">{subscription.price.toFixed(2)} €</p>
+                      <p className="text-lg font-bold text-green-600">{calculateDiscountedMonthly(subscription.price).toFixed(2)} €</p>
+                      <p className="text-xs text-green-600 font-semibold">-{DISCOUNT_RATE * 100}% / mois</p>
                     </div>
                   </div>
                   
@@ -295,14 +298,15 @@ const ServiceDetailsPage = () => {
                   <div>
                     <p className="font-medium text-gray-800">{selectedSubscription.name}</p>
                     <p className="text-sm text-gray-600">
-                      {selectedSubscription.accessType === 'account' 
-                        ? 'Accès via identifiants' 
+                      {selectedSubscription.accessType === 'account'
+                        ? 'Accès via identifiants'
                         : 'Accès via lien d\'invitation'}
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-xl font-bold text-blue-600">{selectedSubscription.price.toFixed(2)} €</p>
-                    <p className="text-xs text-gray-500">prix mensuel</p>
+                    <p className="text-sm text-gray-400 line-through">{selectedSubscription.price.toFixed(2)} €/mois</p>
+                    <p className="text-xl font-bold text-green-600">{calculateDiscountedMonthly(selectedSubscription.price).toFixed(2)} €/mois</p>
+                    <p className="text-xs text-green-600 font-semibold">-{DISCOUNT_RATE * 100}% avec Abona</p>
                   </div>
                 </div>
                 
@@ -343,14 +347,14 @@ const ServiceDetailsPage = () => {
                   {!isRecurring && (
                     <div className="mt-2 pl-6">
                       <label htmlFor="custom-duration" className="block text-sm font-medium text-gray-700 mb-2">
-                        Choisissez votre durée (2-30 jours)
+                        Choisissez votre durée ({MIN_DURATION_DAYS}-{MAX_DURATION_DAYS} jours)
                       </label>
                       <div className="flex items-center">
                         <input
                           type="range"
                           id="custom-duration"
-                          min="2"
-                          max="30"
+                          min={MIN_DURATION_DAYS}
+                          max={MAX_DURATION_DAYS}
                           value={customDuration}
                           onChange={handleDurationChange}
                           className="w-full mr-4"
@@ -361,23 +365,27 @@ const ServiceDetailsPage = () => {
                   )}
                   
                   {/* Affichage du prix */}
-                  <div className="bg-blue-50 p-3 rounded-lg mt-4">
+                  <div className="bg-green-50 border border-green-200 p-3 rounded-lg mt-4">
                     {isRecurring ? (
                       <div className="flex justify-between">
                         <span className="text-gray-700">Abonnement mensuel:</span>
-                        <span className="font-bold text-blue-600">
-                          {selectedSubscription.price.toFixed(2)} € / mois
+                        <span className="font-bold text-green-600">
+                          {calculateDiscountedMonthly(selectedSubscription.price).toFixed(2)} € / mois
                         </span>
                       </div>
                     ) : (
                       <>
                         <div className="flex justify-between">
-                          <span className="text-gray-700">Prix mensuel:</span>
-                          <span className="font-medium">{selectedSubscription.price.toFixed(2)} €</span>
+                          <span className="text-gray-700">Prix officiel:</span>
+                          <span className="text-gray-400 line-through">{selectedSubscription.price.toFixed(2)} €/mois</span>
                         </div>
                         <div className="flex justify-between mt-1">
-                          <span className="text-gray-700">Prix pour {customDuration} jours:</span>
-                          <span className="font-bold text-blue-600">
+                          <span className="text-gray-700">Prix Abona (-{DISCOUNT_RATE * 100}%):</span>
+                          <span className="font-medium text-green-600">{calculateDiscountedMonthly(selectedSubscription.price).toFixed(2)} €/mois</span>
+                        </div>
+                        <div className="flex justify-between mt-1 pt-2 border-t border-green-200">
+                          <span className="text-gray-800 font-medium">Total pour {customDuration} jours:</span>
+                          <span className="font-bold text-green-700 text-lg">
                             {calculatedPrice.toFixed(2)} €
                           </span>
                         </div>
@@ -391,15 +399,14 @@ const ServiceDetailsPage = () => {
                     className="w-full text-white font-bold py-3 px-4 rounded-lg transition-colors mt-4"
                     style={{
                       background: bgColor,
-                      // Assombrir légèrement au survol
                       ':hover': {
                         background: darkerBgColor
                       }
                     }}
                   >
-                    {isRecurring 
-                      ? `S'abonner mensuellement à ${selectedSubscription.price.toFixed(2)} € / mois` 
-                      : `Acheter pour ${customDuration} jours à ${calculatedPrice.toFixed(2)} €`}
+                    {isRecurring
+                      ? `S'abonner mensuellement à ${calculateDiscountedMonthly(selectedSubscription.price).toFixed(2)} € / mois`
+                      : `Acheter ${customDuration} jours pour ${calculatedPrice.toFixed(2)} €`}
                   </button>
                 </div>
               </div>
@@ -447,7 +454,7 @@ const ServiceDetailsPage = () => {
               <h3 className="ml-3 text-lg font-medium text-gray-800">Durée flexible</h3>
             </div>
             <p className="text-gray-600">
-              Choisissez exactement la durée d'abonnement qui vous convient, de 2 jours à 30 jours, avec un prix automatiquement ajusté.
+              Choisissez exactement la durée qui vous convient, de {MIN_DURATION_DAYS} à {MAX_DURATION_DAYS} jours. Ne payez que ce que vous utilisez.
             </p>
           </div>
         </div>

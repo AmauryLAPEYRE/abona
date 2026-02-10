@@ -1,237 +1,215 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
-const stripe = require('stripe')(functions.config().stripe.secret || 'sk_test_votrecleteststripepardefaut');
+
+const stripeSecret = functions.config().stripe?.secret;
+if (!stripeSecret) {
+  console.error('STRIPE SECRET KEY MANQUANTE dans firebase config. Exécuter: firebase functions:config:set stripe.secret="sk_..."');
+}
+const stripe = require('stripe')(stripeSecret || '');
+
+const { MAX_DURATION_DAYS, MIN_DURATION_DAYS, DAYS_IN_MONTH } = require('./constants');
+const { calculatePrice, calculateDiscountedMonthly, clampDuration } = require('./pricing');
 
 admin.initializeApp();
 
-// Fonction utilitaire pour obtenir ou créer un client Stripe
+// Récupère ou crée un client Stripe pour un utilisateur Firebase
 async function getOrCreateCustomer(userId) {
-  const userSnapshot = await admin.firestore().collection('users').doc(userId).get();
-  const userData = userSnapshot.data();
-  
-  if (userData && userData.stripeCustomerId) {
-    return userData.stripeCustomerId;
-  }
-  
-  // Créer un nouveau client Stripe
-  const customer = await stripe.customers.create({
-    email: userData.email,
-    metadata: { userId },
+  const db = admin.firestore();
+  const userRef = db.collection('users').doc(userId);
+
+  return db.runTransaction(async (transaction) => {
+    const userSnapshot = await transaction.get(userRef);
+    const userData = userSnapshot.data();
+
+    if (userData?.stripeCustomerId) {
+      return userData.stripeCustomerId;
+    }
+
+    const customer = await stripe.customers.create({
+      email: userData.email,
+      metadata: { userId },
+    });
+
+    transaction.update(userRef, { stripeCustomerId: customer.id });
+    return customer.id;
   });
-  
-  // Enregistrer l'ID client dans Firestore
-  await admin.firestore().collection('users').doc(userId).update({
-    stripeCustomerId: customer.id,
-  });
-  
-  return customer.id;
 }
 
-// Fonction pour créer l'intention de paiement Stripe
+// Récupère un abonnement depuis Firestore avec validation
+async function getSubscriptionData(serviceId, subscriptionId) {
+  if (!serviceId || !subscriptionId) {
+    throw new functions.https.HttpsError('invalid-argument', 'serviceId et subscriptionId requis');
+  }
+
+  const serviceDoc = await admin.firestore().collection('services').doc(serviceId).get();
+  if (!serviceDoc.exists) {
+    throw new functions.https.HttpsError('not-found', 'Service non trouvé');
+  }
+
+  const subscriptionDoc = await admin.firestore()
+    .collection('services')
+    .doc(serviceId)
+    .collection('subscriptions')
+    .doc(subscriptionId)
+    .get();
+
+  if (!subscriptionDoc.exists) {
+    throw new functions.https.HttpsError('not-found', 'Abonnement non trouvé');
+  }
+
+  return {
+    service: { id: serviceDoc.id, ...serviceDoc.data() },
+    subscription: { id: subscriptionDoc.id, ...subscriptionDoc.data() },
+  };
+}
+
+// --- CLOUD FUNCTIONS ---
+
 exports.createPaymentIntent = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
-    throw new functions.https.HttpsError(
-      'unauthenticated',
-      'Vous devez être connecté pour effectuer cette action.'
-    );
+    throw new functions.https.HttpsError('unauthenticated', 'Vous devez être connecté.');
   }
-  
-  const { serviceId, subscriptionId, duration, amount, isRecurring } = data;
-  
+
+  const { serviceId, subscriptionId, duration, isRecurring } = data;
+  // On IGNORE data.amount - le serveur recalcule toujours
+
+  const safeDuration = isRecurring ? DAYS_IN_MONTH : clampDuration(duration);
+
   try {
-    // Vérifier que le service existe
-    const serviceDoc = await admin.firestore().collection('services').doc(serviceId).get();
-    
-    if (!serviceDoc.exists) {
-      throw new functions.https.HttpsError(
-        'not-found',
-        'Service non trouvé'
-      );
+    const { service, subscription } = await getSubscriptionData(serviceId, subscriptionId);
+
+    // Vérifier qu'il reste des places
+    if ((subscription.currentUsers || 0) >= (subscription.maxUsers || 0)) {
+      throw new functions.https.HttpsError('resource-exhausted', 'Cet abonnement est complet.');
     }
-    
-    // Vérifier que l'abonnement existe si subscriptionId est fourni
-    if (subscriptionId) {
-      const subscriptionDoc = await admin.firestore()
-        .collection('services')
-        .doc(serviceId)
-        .collection('subscriptions')
-        .doc(subscriptionId)
-        .get();
-        
-      if (!subscriptionDoc.exists) {
-        throw new functions.https.HttpsError(
-          'not-found',
-          'Abonnement non trouvé'
-        );
-      }
-    }
-    
+
     if (isRecurring) {
-      // Récupérer ou créer le customer Stripe pour l'utilisateur
       const customerId = await getOrCreateCustomer(context.auth.uid);
-      
-      // Créer une configuration de paiement pour un abonnement récurrent
+
       const setupIntent = await stripe.setupIntents.create({
         customer: customerId,
         payment_method_types: ['card'],
         metadata: {
           userId: context.auth.uid,
           serviceId,
-          subscriptionId: subscriptionId || '',
-          isRecurring: 'true'
-        }
+          subscriptionId,
+          isRecurring: 'true',
+        },
       });
-      
+
       return {
         clientSecret: setupIntent.client_secret,
-        isSetupIntent: true
-      };
-    } else {
-      // Créer une intention de paiement pour un achat unique
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: Math.round(amount * 100), // Stripe utilise les centimes
-        currency: 'eur',
-        metadata: {
-          userId: context.auth.uid,
-          serviceId,
-          subscriptionId: subscriptionId || '',
-          duration: duration ? duration.toString() : '30',
-          isRecurring: 'false'
-        }
-      });
-      
-      return {
-        clientSecret: paymentIntent.client_secret,
-        isSetupIntent: false
+        isSetupIntent: true,
+        serverPrice: calculateDiscountedMonthly(subscription.price),
       };
     }
-  } catch (error) {
-    console.error('Erreur de création de paiement:', error);
-    throw new functions.https.HttpsError(
-      'internal',
-      error.message
-    );
-  }
-});
 
-// Fonction de confirmation d'abonnement
-exports.confirmSubscription = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError(
-      'unauthenticated',
-      'Vous devez être connecté pour effectuer cette action.'
-    );
-  }
-  
-  const { paymentIntentId, serviceId, subscriptionId, duration, isRecurring } = data;
-  
-  try {
-    // Vérifier le status du paiement avec Stripe
-    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
-    
-    if (paymentIntent.status !== 'succeeded') {
-      throw new functions.https.HttpsError(
-        'failed-precondition',
-        'Le paiement n\'a pas été confirmé'
-      );
+    // Calcul du prix côté serveur - jamais confiance au frontend
+    const serverPrice = calculatePrice(subscription.price, safeDuration);
+
+    if (serverPrice <= 0) {
+      throw new functions.https.HttpsError('internal', 'Erreur de calcul du prix.');
     }
-    
-    return { success: true };
-  } catch (error) {
-    console.error('Erreur de confirmation:', error);
-    throw new functions.https.HttpsError(
-      'internal',
-      error.message
-    );
-  }
-});
 
-// Fonction pour mettre en place un abonnement récurrent
-exports.setupRecurringPayment = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError(
-      'unauthenticated',
-      'Vous devez être connecté pour effectuer cette action.'
-    );
-  }
-  
-  const { paymentMethodId, serviceId, subscriptionId } = data;
-  const userId = context.auth.uid;
-  
-  try {
-    // Récupérer l'ID client Stripe de l'utilisateur
-    const customerId = await getOrCreateCustomer(userId);
-    
-    // Attacher la méthode de paiement au client
-    await stripe.paymentMethods.attach(paymentMethodId, {
-      customer: customerId,
-    });
-    
-    // Définir cette méthode comme la méthode par défaut
-    await stripe.customers.update(customerId, {
-      invoice_settings: {
-        default_payment_method: paymentMethodId,
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: Math.round(serverPrice * 100),
+      currency: 'eur',
+      metadata: {
+        userId: context.auth.uid,
+        serviceId,
+        subscriptionId,
+        duration: safeDuration.toString(),
+        originalPrice: subscription.price.toString(),
+        calculatedPrice: serverPrice.toString(),
+        isRecurring: 'false',
       },
     });
-    
-    // Récupérer les détails du service et de l'abonnement
-    const serviceDoc = await admin.firestore().collection('services').doc(serviceId).get();
-    const subscriptionDoc = await admin.firestore()
-      .collection('services')
-      .doc(serviceId)
-      .collection('subscriptions')
-      .doc(subscriptionId)
-      .get();
-    
-    if (!serviceDoc.exists || !subscriptionDoc.exists) {
-      throw new functions.https.HttpsError('not-found', 'Service ou abonnement non trouvé');
+
+    return {
+      clientSecret: paymentIntent.client_secret,
+      isSetupIntent: false,
+      serverPrice,
+    };
+  } catch (error) {
+    if (error instanceof functions.https.HttpsError) throw error;
+    console.error('Erreur createPaymentIntent:', error);
+    throw new functions.https.HttpsError('internal', 'Erreur lors de la création du paiement.');
+  }
+});
+
+exports.confirmSubscription = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Vous devez être connecté.');
+  }
+
+  const { paymentIntentId } = data;
+
+  try {
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+
+    if (paymentIntent.status !== 'succeeded') {
+      throw new functions.https.HttpsError('failed-precondition', 'Le paiement n\'a pas été confirmé.');
     }
-    
-    const serviceData = serviceDoc.data();
-    const subscriptionData = subscriptionDoc.data();
-    
-    // Vérifier si l'utilisateur a déjà un abonnement récurrent pour ce service
-    const existingSubscriptionsSnapshot = await admin.firestore()
+
+    return { success: true };
+  } catch (error) {
+    if (error instanceof functions.https.HttpsError) throw error;
+    console.error('Erreur confirmSubscription:', error);
+    throw new functions.https.HttpsError('internal', 'Erreur lors de la confirmation.');
+  }
+});
+
+exports.setupRecurringPayment = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Vous devez être connecté.');
+  }
+
+  const { paymentMethodId, serviceId, subscriptionId } = data;
+  const userId = context.auth.uid;
+
+  try {
+    const customerId = await getOrCreateCustomer(userId);
+
+    await stripe.paymentMethods.attach(paymentMethodId, { customer: customerId });
+    await stripe.customers.update(customerId, {
+      invoice_settings: { default_payment_method: paymentMethodId },
+    });
+
+    const { service: serviceData, subscription: subscriptionData } = await getSubscriptionData(serviceId, subscriptionId);
+
+    // Vérifier doublon d'abonnement récurrent
+    const existingSubs = await admin.firestore()
       .collection('userSubscriptions')
       .where('userId', '==', userId)
       .where('serviceId', '==', serviceId)
       .where('isRecurring', '==', true)
       .where('isActive', '==', true)
       .get();
-    
-    if (!existingSubscriptionsSnapshot.empty) {
-      throw new functions.https.HttpsError(
-        'already-exists',
-        'Vous avez déjà un abonnement récurrent actif pour ce service'
-      );
+
+    if (!existingSubs.empty) {
+      throw new functions.https.HttpsError('already-exists', 'Vous avez déjà un abonnement récurrent actif pour ce service.');
     }
-    
-    // Créer l'abonnement Stripe (simplifié, en réalité il faudrait créer des produits et des prix dans Stripe)
+
+    // Prix mensuel réduit calculé côté serveur
+    const discountedMonthly = calculateDiscountedMonthly(subscriptionData.price);
+
     const stripeSubscription = await stripe.subscriptions.create({
       customer: customerId,
-      items: [
-        {
-          price_data: {
-            currency: 'eur',
-            product_data: {
-              name: `${serviceData.name} - ${subscriptionData.name}`,
-            },
-            unit_amount: Math.round(subscriptionData.price * 100),
-            recurring: {
-              interval: 'month',
-            },
+      items: [{
+        price_data: {
+          currency: 'eur',
+          product_data: {
+            name: `${serviceData.name} - ${subscriptionData.name}`,
           },
+          unit_amount: Math.round(discountedMonthly * 100),
+          recurring: { interval: 'month' },
         },
-      ],
-      metadata: {
-        userId,
-        serviceId,
-        subscriptionId,
-      },
+      }],
+      metadata: { userId, serviceId, subscriptionId },
     });
-    
-    // Ajouter l'utilisateur à la liste des utilisateurs de l'abonnement
-    await admin.firestore().collection('services')
+
+    await admin.firestore()
+      .collection('services')
       .doc(serviceId)
       .collection('subscriptions')
       .doc(subscriptionId)
@@ -243,15 +221,13 @@ exports.setupRecurringPayment = functions.https.onCall(async (data, context) => 
           email: context.auth.token.email,
           joinedAt: admin.firestore.FieldValue.serverTimestamp(),
           isRecurring: true,
-          stripeSubscriptionId: stripeSubscription.id
-        })
+          stripeSubscriptionId: stripeSubscription.id,
+        }),
       });
-      
-    // Calculer la date d'expiration (pour la première période)
+
     const startDate = new Date();
-    const expiryDate = new Date(startDate.getTime() + (30 * 24 * 60 * 60 * 1000));
-    
-    // Enregistrer l'abonnement dans Firestore
+    const expiryDate = new Date(startDate.getTime() + (DAYS_IN_MONTH * 24 * 60 * 60 * 1000));
+
     const userSubscriptionRef = await admin.firestore().collection('userSubscriptions').add({
       userId,
       serviceId,
@@ -266,111 +242,78 @@ exports.setupRecurringPayment = functions.https.onCall(async (data, context) => 
       stripeCustomerId: customerId,
       isRecurring: true,
       isActive: true,
-      price: subscriptionData.price,
+      originalPrice: subscriptionData.price,
+      discountedPrice: discountedMonthly,
       startDate: admin.firestore.FieldValue.serverTimestamp(),
-      expiryDate: expiryDate,
+      expiryDate,
       nextBillingDate: expiryDate,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
-    
-    return { 
-      success: true, 
+
+    return {
+      success: true,
       subscriptionId: stripeSubscription.id,
-      userSubscriptionId: userSubscriptionRef.id
+      userSubscriptionId: userSubscriptionRef.id,
     };
   } catch (error) {
-    console.error('Erreur lors de la configuration de l\'abonnement récurrent:', error);
-    throw new functions.https.HttpsError('internal', error.message);
+    if (error instanceof functions.https.HttpsError) throw error;
+    console.error('Erreur setupRecurringPayment:', error);
+    throw new functions.https.HttpsError('internal', 'Erreur lors de la configuration de l\'abonnement.');
   }
 });
 
-// Fonction pour supprimer un service et tous ses abonnements
 exports.deleteServiceAndSubscriptions = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Vous devez être connecté.');
+  }
+
+  const userDoc = await admin.firestore().collection('users').doc(context.auth.uid).get();
+  if (!userDoc.exists || userDoc.data().role !== 'admin') {
+    throw new functions.https.HttpsError('permission-denied', 'Droits insuffisants.');
+  }
+
+  const { serviceId } = data;
+  if (!serviceId) {
+    throw new functions.https.HttpsError('invalid-argument', 'serviceId est requis.');
+  }
+
   try {
-    // Vérifier l'authentification
-    if (!context.auth) {
-      throw new functions.https.HttpsError(
-        'unauthenticated',
-        'Vous devez être connecté pour effectuer cette action.'
-      );
-    }
-    
-    // Vérifier si l'utilisateur est un administrateur
-    const userDoc = await admin.firestore().collection('users').doc(context.auth.uid).get();
-    
-    if (!userDoc.exists || userDoc.data().role !== 'admin') {
-      throw new functions.https.HttpsError(
-        'permission-denied',
-        'Vous n\'avez pas les droits nécessaires pour effectuer cette action.'
-      );
-    }
-    
-    const { serviceId } = data;
-    
-    if (!serviceId) {
-      throw new functions.https.HttpsError('invalid-argument', 'serviceId est requis');
-    }
-    
-    // Récupérer tous les abonnements de ce service
     const subscriptionsSnapshot = await admin.firestore()
-      .collection('services')
-      .doc(serviceId)
-      .collection('subscriptions')
-      .get();
-    
-    // Récupérer tous les abonnements utilisateur liés à ce service
+      .collection('services').doc(serviceId).collection('subscriptions').get();
+
     const userSubscriptionsSnapshot = await admin.firestore()
-      .collection('userSubscriptions')
-      .where('serviceId', '==', serviceId)
-      .get();
-    
-    // Supprimer en lot
+      .collection('userSubscriptions').where('serviceId', '==', serviceId).get();
+
     const batch = admin.firestore().batch();
-    
-    // Supprimer les abonnements du service
-    subscriptionsSnapshot.docs.forEach(doc => {
-      batch.delete(doc.ref);
-    });
-    
-    // Supprimer les abonnements utilisateur
-    userSubscriptionsSnapshot.docs.forEach(doc => {
-      batch.delete(doc.ref);
-    });
-    
-    // Supprimer le service lui-même
+    subscriptionsSnapshot.docs.forEach(doc => batch.delete(doc.ref));
+    userSubscriptionsSnapshot.docs.forEach(doc => batch.delete(doc.ref));
     batch.delete(admin.firestore().collection('services').doc(serviceId));
-    
-    // Exécuter le lot
     await batch.commit();
-    
+
     return { success: true };
   } catch (error) {
-    console.error('Erreur lors de la suppression du service:', error);
-    throw new functions.https.HttpsError(
-      'internal',
-      error.message
-    );
+    console.error('Erreur deleteServiceAndSubscriptions:', error);
+    throw new functions.https.HttpsError('internal', 'Erreur lors de la suppression.');
   }
 });
 
-// Webhook pour gérer les événements Stripe (paiements récurrents, etc.)
+// --- STRIPE WEBHOOKS ---
+
 exports.stripeWebhook = functions.https.onRequest(async (req, res) => {
-  const signature = req.headers['stripe-signature'];
-  let event;
-  
-  try {
-    // Vérifier la signature du webhook Stripe
-    event = stripe.webhooks.constructEvent(
-      req.rawBody,
-      signature,
-      functions.config().stripe.webhook_secret || 'whsec_votre_webhook_secret'
-    );
-  } catch (error) {
-    console.error('Vérification de signature webhook échouée:', error);
-    return res.status(400).send(`Erreur webhook: ${error.message}`);
+  const webhookSecret = functions.config().stripe?.webhook_secret;
+  if (!webhookSecret) {
+    console.error('STRIPE WEBHOOK SECRET MANQUANT');
+    return res.status(500).send('Configuration manquante');
   }
-  
-  // Gérer les différents types d'événements
+
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(req.rawBody, req.headers['stripe-signature'], webhookSecret);
+  } catch (error) {
+    console.error('Signature webhook invalide:', error.message);
+    return res.status(400).send('Signature invalide');
+  }
+
   try {
     switch (event.type) {
       case 'invoice.payment_succeeded':
@@ -382,159 +325,112 @@ exports.stripeWebhook = functions.https.onRequest(async (req, res) => {
       case 'customer.subscription.deleted':
         await handleSubscriptionDeleted(event.data.object);
         break;
-      // Ajouter d'autres cas selon les besoins
     }
-    
-    // Répondre pour confirmer la réception
     res.status(200).send({ received: true });
   } catch (error) {
-    console.error(`Erreur lors du traitement de l'événement ${event.type}:`, error);
-    res.status(500).send({ error: error.message });
+    console.error(`Erreur traitement ${event.type}:`, error);
+    res.status(500).send({ error: 'Erreur de traitement' });
   }
 });
 
-// Traiter le paiement réussi d'une facture (pour les abonnements récurrents)
 async function handleInvoicePaymentSucceeded(invoice) {
-  // Uniquement traiter les factures liées aux abonnements
   if (!invoice.subscription) return;
-  
+
   try {
-    // Récupérer l'abonnement Stripe
     const subscription = await stripe.subscriptions.retrieve(invoice.subscription);
-    
-    // Récupérer l'abonnement utilisateur correspondant
-    const userSubscriptionsSnapshot = await admin.firestore()
+    const snapshot = await admin.firestore()
       .collection('userSubscriptions')
       .where('stripeSubscriptionId', '==', subscription.id)
       .limit(1)
       .get();
-    
-    if (userSubscriptionsSnapshot.empty) {
-      console.log(`Aucun abonnement utilisateur trouvé pour l'abonnement Stripe ${subscription.id}`);
-      return;
-    }
-    
-    const userSubscriptionRef = userSubscriptionsSnapshot.docs[0].ref;
-    const userSubscriptionData = userSubscriptionsSnapshot.docs[0].data();
-    
-    // Calculer la nouvelle date d'expiration (+ 30 jours)
-    const currentExpiryDate = userSubscriptionData.expiryDate.toDate();
-    const newExpiryDate = new Date(currentExpiryDate.getTime() + (30 * 24 * 60 * 60 * 1000));
-    const nextBillingDate = new Date(newExpiryDate);
-    
-    // Mettre à jour l'abonnement utilisateur
-    await userSubscriptionRef.update({
-      expiryDate: admin.firestore.Timestamp.fromDate(newExpiryDate),
-      nextBillingDate: admin.firestore.Timestamp.fromDate(nextBillingDate),
+
+    if (snapshot.empty) return;
+
+    const ref = snapshot.docs[0].ref;
+    const data = snapshot.docs[0].data();
+
+    const currentExpiry = data.expiryDate.toDate();
+    const newExpiry = new Date(currentExpiry.getTime() + (DAYS_IN_MONTH * 24 * 60 * 60 * 1000));
+
+    await ref.update({
+      expiryDate: admin.firestore.Timestamp.fromDate(newExpiry),
+      nextBillingDate: admin.firestore.Timestamp.fromDate(newExpiry),
       lastBillingDate: admin.firestore.Timestamp.fromDate(new Date()),
       paymentHistory: admin.firestore.FieldValue.arrayUnion({
         amount: invoice.amount_paid / 100,
         date: admin.firestore.Timestamp.fromDate(new Date()),
         invoiceId: invoice.id,
-        status: 'succeeded'
-      })
+        status: 'succeeded',
+      }),
     });
-    
-    console.log(`Abonnement utilisateur ${userSubscriptionRef.id} mis à jour après paiement réussi.`);
   } catch (error) {
-    console.error('Erreur lors du traitement du paiement réussi:', error);
+    console.error('Erreur handleInvoicePaymentSucceeded:', error);
     throw error;
   }
 }
 
-// Traiter la mise à jour d'un abonnement Stripe
 async function handleSubscriptionUpdated(subscription) {
   try {
-    // Récupérer l'abonnement utilisateur correspondant
-    const userSubscriptionsSnapshot = await admin.firestore()
+    const snapshot = await admin.firestore()
       .collection('userSubscriptions')
       .where('stripeSubscriptionId', '==', subscription.id)
       .limit(1)
       .get();
-    
-    if (userSubscriptionsSnapshot.empty) {
-      console.log(`Aucun abonnement utilisateur trouvé pour l'abonnement Stripe ${subscription.id}`);
-      return;
-    }
-    
-    const userSubscriptionRef = userSubscriptionsSnapshot.docs[0].ref;
-    
-    // Mettre à jour le statut de l'abonnement utilisateur
-    const updates = {
-      stripeStatus: subscription.status
-    };
-    
-    // Si l'abonnement est inactif, le marquer comme tel
-    if (subscription.status === 'unpaid' || subscription.status === 'canceled' || subscription.status === 'incomplete_expired') {
+
+    if (snapshot.empty) return;
+
+    const updates = { stripeStatus: subscription.status };
+    if (['unpaid', 'canceled', 'incomplete_expired'].includes(subscription.status)) {
       updates.isActive = false;
     }
-    
-    await userSubscriptionRef.update(updates);
-    
-    console.log(`Abonnement utilisateur ${userSubscriptionRef.id} mis à jour selon le statut Stripe: ${subscription.status}`);
+
+    await snapshot.docs[0].ref.update(updates);
   } catch (error) {
-    console.error('Erreur lors de la mise à jour du statut d\'abonnement:', error);
+    console.error('Erreur handleSubscriptionUpdated:', error);
     throw error;
   }
 }
 
-// Traiter la suppression d'un abonnement Stripe
 async function handleSubscriptionDeleted(subscription) {
   try {
-    // Récupérer l'abonnement utilisateur correspondant
-    const userSubscriptionsSnapshot = await admin.firestore()
+    const snapshot = await admin.firestore()
       .collection('userSubscriptions')
       .where('stripeSubscriptionId', '==', subscription.id)
       .limit(1)
       .get();
-    
-    if (userSubscriptionsSnapshot.empty) {
-      console.log(`Aucun abonnement utilisateur trouvé pour l'abonnement Stripe ${subscription.id}`);
-      return;
-    }
-    
-    const userSubscriptionRef = userSubscriptionsSnapshot.docs[0].ref;
-    const userSubscriptionData = userSubscriptionsSnapshot.docs[0].data();
-    
-    // Marquer l'abonnement comme inactif
-    await userSubscriptionRef.update({
+
+    if (snapshot.empty) return;
+
+    const ref = snapshot.docs[0].ref;
+    const data = snapshot.docs[0].data();
+
+    await ref.update({
       isActive: false,
       isRecurring: false,
       canceledAt: admin.firestore.FieldValue.serverTimestamp(),
-      stripeStatus: 'canceled'
+      stripeStatus: 'canceled',
     });
-    
-    // Mettre à jour l'abonnement du service
+
     const serviceRef = admin.firestore()
       .collection('services')
-      .doc(userSubscriptionData.serviceId)
+      .doc(data.serviceId)
       .collection('subscriptions')
-      .doc(userSubscriptionData.subscriptionId);
-    
-    // Utiliser une transaction pour assurer la cohérence des données
-    await admin.firestore().runTransaction(async transaction => {
+      .doc(data.subscriptionId);
+
+    await admin.firestore().runTransaction(async (transaction) => {
       const serviceSubDoc = await transaction.get(serviceRef);
-      if (!serviceSubDoc.exists) {
-        console.log(`L'abonnement de service ${userSubscriptionData.subscriptionId} n'existe plus.`);
-        return;
-      }
-      
+      if (!serviceSubDoc.exists) return;
+
       const serviceSubData = serviceSubDoc.data();
-      
-      // Mettre à jour le nombre d'utilisateurs et supprimer l'utilisateur de la liste
-      const updatedUsers = (serviceSubData.users || []).filter(user => 
-        user.userId !== userSubscriptionData.userId
-      );
-      
+      const updatedUsers = (serviceSubData.users || []).filter(u => u.userId !== data.userId);
+
       transaction.update(serviceRef, {
         currentUsers: Math.max(0, (serviceSubData.currentUsers || 0) - 1),
-        users: updatedUsers
+        users: updatedUsers,
       });
     });
-    
-    console.log(`Abonnement utilisateur ${userSubscriptionRef.id} marqué comme supprimé.`);
   } catch (error) {
-    console.error('Erreur lors de la suppression d\'abonnement:', error);
+    console.error('Erreur handleSubscriptionDeleted:', error);
     throw error;
   }
 }

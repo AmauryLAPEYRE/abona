@@ -5,6 +5,8 @@ import { useStripe as useStripeContext } from '../contexts/StripeContext';
 import { useSubscriptions } from '../contexts/SubscriptionContext';
 import { useAuth } from '../contexts/AuthContext';
 import { firestore } from '../firebase';
+import { DISCOUNT_RATE } from '../constants';
+import { clampDuration, calculatePrice, calculateDiscountedMonthly } from '../pricing';
 
 const Checkout = () => {
   const { serviceId, subscriptionId } = useParams();
@@ -13,7 +15,8 @@ const Checkout = () => {
   
   // Récupérer les paramètres de l'URL
   const searchParams = new URLSearchParams(location.search);
-  const duration = parseInt(searchParams.get('duration') || '30');
+  const rawDuration = parseInt(searchParams.get('duration') || '15');
+  const duration = isRecurring ? 30 : clampDuration(rawDuration);
   const isRecurring = searchParams.get('recurring') === 'true';
   
   const { currentUser } = useAuth();
@@ -110,23 +113,28 @@ const Checkout = () => {
         
         setSubscription(subscriptionData);
         
-        // Calculer le prix proratisé pour les durées uniques
-        const prorated = isRecurring 
-          ? subscriptionData.price 
-          : calculateProRatedPrice(subscriptionData.price, duration);
-        setProratedPrice(prorated);
-        
-        // Créer l'intention de paiement avec le prix proratisé
-        const { clientSecret, isSetupIntent: isSetup } = await createPaymentIntent(
-          serviceId, 
-          subscriptionId, 
-          duration, 
-          prorated, 
+        // Estimation locale (pour affichage immédiat, le serveur recalcule)
+        const estimatedPrice = isRecurring
+          ? calculateDiscountedMonthly(subscriptionData.price)
+          : calculatePrice(subscriptionData.price, duration);
+        setProratedPrice(estimatedPrice);
+
+        // Créer l'intention de paiement - le serveur recalcule le prix
+        const result = await createPaymentIntent(
+          serviceId,
+          subscriptionId,
+          duration,
+          estimatedPrice,
           isRecurring
         );
-        
-        setClientSecret(clientSecret);
-        setIsSetupIntent(isSetup || false);
+
+        // Si le serveur renvoie un prix différent, on utilise le prix serveur
+        if (result.serverPrice && result.serverPrice !== estimatedPrice) {
+          setProratedPrice(result.serverPrice);
+        }
+
+        setClientSecret(result.clientSecret);
+        setIsSetupIntent(result.isSetupIntent || false);
         
         setLoading(false);
       } catch (err) {
@@ -392,23 +400,27 @@ const Checkout = () => {
                     </div>
                   )}
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Prix mensuel standard:</span>
-                    <span className="font-medium">{subscription.price.toFixed(2)} €</span>
+                    <span className="text-gray-600">Prix officiel:</span>
+                    <span className="text-gray-400 line-through">{subscription.price.toFixed(2)} €/mois</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Prix Abona (-{DISCOUNT_RATE * 100}%):</span>
+                    <span className="font-medium text-green-600">{calculateDiscountedMonthly(subscription.price).toFixed(2)} €/mois</span>
                   </div>
                   {!isRecurring && (
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Prix proratisé pour {duration} jours:</span>
-                      <span className="font-medium text-blue-600">{proratedPrice.toFixed(2)} €</span>
+                      <span className="text-gray-600">Proratisé pour {duration} jours:</span>
+                      <span className="font-medium text-green-600">{proratedPrice.toFixed(2)} €</span>
                     </div>
                   )}
                 </div>
-                
+
                 <div className="flex justify-between items-center font-bold">
                   <span className="text-gray-800">Total à payer:</span>
-                  <span className="text-blue-600 text-xl">
-                    {isRecurring 
-                      ? `${subscription.price.toFixed(2)} € / mois` 
-                      : `${proratedPrice.toFixed(2)} € unique`}
+                  <span className="text-green-700 text-xl">
+                    {isRecurring
+                      ? `${calculateDiscountedMonthly(subscription.price).toFixed(2)} € / mois`
+                      : `${proratedPrice.toFixed(2)} €`}
                   </span>
                 </div>
               </div>
@@ -459,8 +471,8 @@ const Checkout = () => {
                     Traitement en cours...
                   </>
                 ) : (
-                  isRecurring 
-                    ? `S'abonner pour ${subscription.price.toFixed(2)} € / mois` 
+                  isRecurring
+                    ? `S'abonner pour ${calculateDiscountedMonthly(subscription.price).toFixed(2)} € / mois`
                     : `Payer ${proratedPrice.toFixed(2)} €`
                 )}
               </button>

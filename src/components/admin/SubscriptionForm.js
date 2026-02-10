@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { firestore } from '../../firebase';
+import { DISCOUNT_RATE, MAX_DURATION_DAYS } from '../../constants';
+import { calculateDiscountedMonthly, calculatePrice } from '../../pricing';
 
 const SubscriptionForm = () => {
   const { serviceId, subscriptionId } = useParams();
@@ -299,7 +301,7 @@ const SubscriptionForm = () => {
           
           <div>
             <label htmlFor="price" className="block text-sm font-medium text-gray-700 mb-1">
-                Prix mensuel (€) <span className="text-red-500">*</span>
+                Prix mensuel officiel (€) <span className="text-red-500">*</span>
             </label>
             <div className="mt-1 relative rounded-md shadow-sm">
                 <input
@@ -317,8 +319,13 @@ const SubscriptionForm = () => {
                 <span className="text-gray-500 sm:text-sm">€ / mois</span>
                 </div>
             </div>
+            {price && parseFloat(price) > 0 && (
+              <p className="mt-1 text-xs text-green-600 font-medium">
+                Prix Abona : {calculateDiscountedMonthly(parseFloat(price)).toFixed(2)} €/mois (-{DISCOUNT_RATE * 100}%) | {MAX_DURATION_DAYS}j = {calculatePrice(parseFloat(price), MAX_DURATION_DAYS).toFixed(2)} €
+              </p>
+            )}
             <p className="mt-1 text-xs text-gray-500">
-                Le prix sera automatiquement proratisé selon la durée choisie par l'utilisateur
+                Entrez le prix officiel du service. La réduction de {DISCOUNT_RATE * 100}% et le prorata (max {MAX_DURATION_DAYS} jours) sont appliqués automatiquement.
             </p>
             </div>
 
