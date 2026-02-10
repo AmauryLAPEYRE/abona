@@ -246,14 +246,14 @@ const AdminServiceForm = () => {
     if (!errors[field] || !touched[field]) return null;
     
     return (
-      <p className="mt-1 text-sm text-red-600">{errors[field]}</p>
+      <p className="mt-1 text-sm text-red-400">{errors[field]}</p>
     );
   };
 
   // Aperçu de la couleur
   const ColorPreview = () => (
-    <div 
-      className="w-8 h-8 rounded-md border border-gray-300 ml-2" 
+    <div
+      className="w-8 h-8 rounded-md border border-white/20 ml-2"
       style={{ backgroundColor: bgColor }}
     ></div>
   );
@@ -261,7 +261,7 @@ const AdminServiceForm = () => {
   if (loading && isEdit) {
     return (
       <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        <div className="spinner animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
       </div>
     );
   }
@@ -269,29 +269,29 @@ const AdminServiceForm = () => {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">
+        <h1 className="text-2xl font-bold text-white">
           {isEdit ? 'Modifier le service' : 'Ajouter un service'}
         </h1>
       </div>
       
       {errors.form && (
-        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6" role="alert">
+        <div className="glass-alert-error p-4 mb-6" role="alert">
           <p className="font-bold">Erreur</p>
           <p>{errors.form}</p>
         </div>
       )}
       
-      <div className="bg-white shadow rounded-lg overflow-hidden">
+      <div className="glass-card overflow-hidden">
         <form onSubmit={handleSubmit} className="p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-                Nom du service <span className="text-red-500">*</span>
+              <label htmlFor="name" className="block text-sm font-medium text-white/80 mb-1">
+                Nom du service <span className="text-red-400">*</span>
               </label>
               <input
                 type="text"
                 id="name"
-                className={`shadow-sm ${errors.name && touched.name ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'focus:ring-blue-500 focus:border-blue-500'} block w-full sm:text-sm border-gray-300 rounded-md`}
+                className={`glass-input ${errors.name && touched.name ? 'border-red-500 focus:ring-red-500' : ''}`}
                 placeholder="Ex: Netflix Premium"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -302,12 +302,12 @@ const AdminServiceForm = () => {
             </div>
             
             <div>
-              <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-1">
-                Catégorie <span className="text-red-500">*</span>
+              <label htmlFor="category" className="block text-sm font-medium text-white/80 mb-1">
+                Catégorie <span className="text-red-400">*</span>
               </label>
               <select
                 id="category"
-                className={`shadow-sm ${errors.category && touched.category ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'focus:ring-blue-500 focus:border-blue-500'} block w-full sm:text-sm border-gray-300 rounded-md`}
+                className={`glass-input ${errors.category && touched.category ? 'border-red-500 focus:ring-red-500' : ''}`}
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
                 onBlur={() => handleBlur('category')}
@@ -323,13 +323,13 @@ const AdminServiceForm = () => {
           </div>
           
           <div className="mb-6">
-            <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
-              Description <span className="text-red-500">*</span>
+            <label htmlFor="description" className="block text-sm font-medium text-white/80 mb-1">
+              Description <span className="text-red-400">*</span>
             </label>
             <textarea
               id="description"
               rows={4}
-              className={`shadow-sm ${errors.description && touched.description ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'focus:ring-blue-500 focus:border-blue-500'} block w-full sm:text-sm border-gray-300 rounded-md`}
+              className={`glass-input ${errors.description && touched.description ? 'border-red-500 focus:ring-red-500' : ''}`}
               placeholder="Description détaillée du service"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -341,33 +341,33 @@ const AdminServiceForm = () => {
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div>
-              <label htmlFor="imageUrl" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="imageUrl" className="block text-sm font-medium text-white/80 mb-1">
                 URL de l'image (logo)
               </label>
               <input
                 type="url"
                 id="imageUrl"
-                className={`shadow-sm ${errors.imageUrl && touched.imageUrl ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'focus:ring-blue-500 focus:border-blue-500'} block w-full sm:text-sm border-gray-300 rounded-md`}
+                className={`glass-input ${errors.imageUrl && touched.imageUrl ? 'border-red-500 focus:ring-red-500' : ''}`}
                 placeholder="https://exemple.com/image.jpg"
                 value={imageUrl}
                 onChange={(e) => setImageUrl(e.target.value)}
                 onBlur={() => handleBlur('imageUrl')}
               />
               <ErrorMessage field="imageUrl" />
-              <p className="mt-1 text-sm text-gray-500">
+              <p className="mt-1 text-sm text-white/50">
                 Laissez vide pour utiliser une icône générée automatiquement
               </p>
             </div>
             
             <div>
-              <label htmlFor="bgColor" className="block text-sm font-medium text-gray-700 mb-1">
-                Couleur de fond du logo <span className="text-red-500">*</span>
+              <label htmlFor="bgColor" className="block text-sm font-medium text-white/80 mb-1">
+                Couleur de fond du logo <span className="text-red-400">*</span>
               </label>
               <div className="flex items-center">
                 <input
                   type="text"
                   id="bgColor"
-                  className={`shadow-sm ${errors.bgColor && touched.bgColor ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'focus:ring-blue-500 focus:border-blue-500'} block w-full sm:text-sm border-gray-300 rounded-md`}
+                  className={`glass-input ${errors.bgColor && touched.bgColor ? 'border-red-500 focus:ring-red-500' : ''}`}
                   placeholder="#FFFFFF"
                   value={bgColor}
                   onChange={(e) => setBgColor(e.target.value)}
@@ -384,7 +384,7 @@ const AdminServiceForm = () => {
                 <ColorPreview />
               </div>
               <ErrorMessage field="bgColor" />
-              <p className="mt-1 text-sm text-gray-500">
+              <p className="mt-1 text-sm text-white/50">
                 Couleur de fond pour l'affichage du logo (format hexadécimal)
               </p>
             </div>
@@ -392,13 +392,13 @@ const AdminServiceForm = () => {
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div>
-              <label htmlFor="shortTermDays" className="block text-sm font-medium text-gray-700 mb-1">
-                Jours pour l'offre courte <span className="text-red-500">*</span>
+              <label htmlFor="shortTermDays" className="block text-sm font-medium text-white/80 mb-1">
+                Jours pour l'offre courte <span className="text-red-400">*</span>
               </label>
               <input
                 type="number"
                 id="shortTermDays"
-                className={`shadow-sm ${errors.shortTermDays && touched.shortTermDays ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'focus:ring-blue-500 focus:border-blue-500'} block w-full sm:text-sm border-gray-300 rounded-md`}
+                className={`glass-input ${errors.shortTermDays && touched.shortTermDays ? 'border-red-500 focus:ring-red-500' : ''}`}
                 placeholder="2"
                 min="1"
                 max="30"
@@ -408,40 +408,40 @@ const AdminServiceForm = () => {
                 required
               />
               <ErrorMessage field="shortTermDays" />
-              <p className="mt-1 text-sm text-gray-500">
+              <p className="mt-1 text-sm text-white/50">
                 Nombre de jours pour l'offre de courte durée (1-30)
               </p>
             </div>
             
             <div>
-              <label htmlFor="shortTermLabel" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="shortTermLabel" className="block text-sm font-medium text-white/80 mb-1">
                 Libellé pour l'offre courte
               </label>
               <input
                 type="text"
                 id="shortTermLabel"
-                className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                className="glass-input"
                 placeholder="2 jours"
                 value={shortTermLabel}
                 onChange={(e) => setShortTermLabel(e.target.value)}
               />
-              <p className="mt-1 text-sm text-gray-500">
+              <p className="mt-1 text-sm text-white/50">
                 Texte affiché pour l'offre courte (ex: "2 jours", "1 semaine")
               </p>
             </div>
           </div>
           
-          <div className="border-t border-gray-200 pt-6 flex justify-between">
+          <div className="border-t border-white/10 pt-6 flex justify-between">
             <Link
               to="/admin/services"
-              className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              className="btn-secondary"
             >
               Annuler
             </Link>
             <button
               type="submit"
               disabled={loading}
-              className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <>

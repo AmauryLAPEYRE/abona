@@ -33,15 +33,15 @@ const Navbar = () => {
       { to: '/', label: 'Accueil' },
       { to: '/services', label: 'Services' }
     ];
-    
+
     if (currentUser) {
       links.push({ to: '/dashboard', label: 'Mes abonnements' });
     }
-    
+
     if (isAdmin) {
       links.push({ to: '/admin/services', label: 'Administration' });
     }
-    
+
     return links;
   }, [currentUser, isAdmin]);
 
@@ -49,13 +49,13 @@ const Navbar = () => {
   const DesktopNavLinks = () => (
     <div className="hidden md:flex ml-10 space-x-4">
       {navLinks.map(link => (
-        <Link 
+        <Link
           key={link.to}
-          to={link.to} 
+          to={link.to}
           className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-            isActive(link.to) 
-              ? 'text-blue-600' 
-              : 'text-gray-700 hover:text-blue-600'
+            isActive(link.to)
+              ? 'text-white'
+              : 'text-white/80 hover:text-white'
           }`}
         >
           {link.label}
@@ -68,42 +68,42 @@ const Navbar = () => {
   const MobileNavLinks = () => (
     <div className="space-y-1 px-4">
       {navLinks.map(link => (
-        <Link 
+        <Link
           key={link.to}
-          to={link.to} 
+          to={link.to}
           className={`block px-3 py-2 rounded-md text-base font-medium ${
-            isActive(link.to) 
-              ? 'text-blue-600 bg-blue-50' 
-              : 'text-gray-700 hover:text-blue-600 hover:bg-blue-50'
+            isActive(link.to)
+              ? 'text-white bg-white/10'
+              : 'text-white/80 hover:text-white hover:bg-white/10'
           }`}
           onClick={() => setMobileMenuOpen(false)}
         >
           {link.label}
         </Link>
       ))}
-      
+
       {currentUser ? (
-        <button 
+        <button
           onClick={() => {
             handleLogout();
             setMobileMenuOpen(false);
           }}
-          className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-blue-600 hover:bg-blue-50"
+          className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-white/80 hover:text-white hover:bg-white/10"
         >
           Déconnexion
         </button>
       ) : (
         <>
-          <Link 
-            to="/login" 
-            className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-blue-600 hover:bg-blue-50"
+          <Link
+            to="/login"
+            className="block px-3 py-2 rounded-md text-base font-medium text-white/80 hover:text-white hover:bg-white/10"
             onClick={() => setMobileMenuOpen(false)}
           >
             Connexion
           </Link>
-          <Link 
-            to="/register" 
-            className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-blue-600 hover:bg-blue-50"
+          <Link
+            to="/register"
+            className="block px-3 py-2 rounded-md text-base font-medium text-white/80 hover:text-white hover:bg-white/10"
             onClick={() => setMobileMenuOpen(false)}
           >
             Inscription
@@ -117,7 +117,7 @@ const Navbar = () => {
   const UserProfileDropdown = () => {
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef(null);
-    
+
     // Fermer le menu lors d'un clic à l'extérieur
     useEffect(() => {
       const handleClickOutside = (event) => {
@@ -125,17 +125,17 @@ const Navbar = () => {
           setIsOpen(false);
         }
       };
-  
+
       document.addEventListener('mousedown', handleClickOutside);
       return () => {
         document.removeEventListener('mousedown', handleClickOutside);
       };
     }, []);
-    
+
     return (
       <div className="relative" ref={dropdownRef}>
-        <button 
-          className="flex items-center space-x-2 text-gray-700 hover:text-blue-600 transition-colors"
+        <button
+          className="flex items-center space-x-2 text-white/80 hover:text-white transition-colors"
           onClick={() => setIsOpen(!isOpen)}
         >
           <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center text-white font-medium">
@@ -146,40 +146,40 @@ const Navbar = () => {
             <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
           </svg>
         </button>
-        
+
         {isOpen && (
-          <div 
-            className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-10"
+          <div
+            className="glass-dropdown"
           >
-            <Link 
-              to="/profile" 
-              className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+            <Link
+              to="/profile"
+              className="glass-dropdown-item"
               onClick={() => setIsOpen(false)}
             >
               Mon profil
             </Link>
-            <Link 
-              to="/dashboard" 
-              className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+            <Link
+              to="/dashboard"
+              className="glass-dropdown-item"
               onClick={() => setIsOpen(false)}
             >
               Mes abonnements
             </Link>
             {isAdmin && (
-              <Link 
-                to="/admin/services" 
-                className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+              <Link
+                to="/admin/services"
+                className="glass-dropdown-item"
                 onClick={() => setIsOpen(false)}
               >
                 Administration
               </Link>
             )}
-            <button 
+            <button
               onClick={() => {
                 setIsOpen(false);
                 handleLogout();
               }}
-              className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+              className="glass-dropdown-item w-full text-left"
             >
               Déconnexion
             </button>
@@ -192,15 +192,15 @@ const Navbar = () => {
   // Composant pour les boutons d'authentification
   const AuthButtons = () => (
     <div className="flex items-center space-x-2">
-      <Link 
-        to="/login" 
-        className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-blue-600 transition-colors"
+      <Link
+        to="/login"
+        className="px-4 py-2 text-sm font-medium text-white hover:text-white/80 transition-colors"
       >
         Connexion
       </Link>
-      <Link 
-        to="/register" 
-        className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-lg transition-colors"
+      <Link
+        to="/register"
+        className="btn-primary px-4 py-2 text-sm font-medium"
       >
         Inscription
       </Link>
@@ -211,7 +211,7 @@ const Navbar = () => {
   const MobileMenuToggle = () => (
     <button
       type="button"
-      className="text-gray-700 hover:text-blue-600 transition-colors"
+      className="text-white/80 hover:text-white transition-colors"
       onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
       aria-label={mobileMenuOpen ? "Fermer le menu" : "Ouvrir le menu"}
     >
@@ -228,7 +228,7 @@ const Navbar = () => {
   );
 
   return (
-    <nav className="bg-white shadow-sm">
+    <nav className="bg-white/80 backdrop-blur-md shadow-sm">
       <div className="container mx-auto px-4">
         <div className="flex justify-between items-center h-16">
           {/* Logo et liens principaux */}
@@ -238,11 +238,11 @@ const Navbar = () => {
                 Abona
               </span>
             </Link>
-            
+
             {/* Liens de navigation - version desktop */}
             <DesktopNavLinks />
           </div>
-          
+
           {/* Boutons de connexion / profil */}
           <div className="hidden md:flex items-center">
             {currentUser ? (
@@ -254,17 +254,17 @@ const Navbar = () => {
               <AuthButtons />
             )}
           </div>
-          
+
           {/* Bouton de menu mobile */}
           <div className="md:hidden">
             <MobileMenuToggle />
           </div>
         </div>
       </div>
-      
+
       {/* Menu mobile */}
       {mobileMenuOpen && (
-        <div className="md:hidden bg-white pt-2 pb-3 border-t border-gray-200">
+        <div className="md:hidden bg-white/10 backdrop-blur-xl border-t border-white/10 pt-2 pb-3">
           <MobileNavLinks />
         </div>
       )}

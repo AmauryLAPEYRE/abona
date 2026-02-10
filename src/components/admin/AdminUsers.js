@@ -73,33 +73,33 @@ const AdminUsers = () => {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Gestion des utilisateurs</h1>
+        <h1 className="text-2xl font-bold text-white">Gestion des utilisateurs</h1>
       </div>
       
       {error && (
-        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6" role="alert">
+        <div className="glass-alert-error p-4 mb-6" role="alert">
           <p className="font-bold">Erreur</p>
           <p>{error}</p>
         </div>
       )}
       
       {successMessage && (
-        <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-6" role="alert">
+        <div className="glass-alert-success p-4 mb-6" role="alert">
           <p>{successMessage}</p>
         </div>
       )}
       
-      <div className="bg-white shadow rounded-lg overflow-hidden">
-        <div className="p-4 border-b border-gray-200">
+      <div className="glass-card overflow-hidden">
+        <div className="p-4 border-b border-white/10">
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <svg className="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+              <svg className="h-5 w-5 text-white/40" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
                 <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
               </svg>
             </div>
             <input
               type="text"
-              className="focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 pr-3 py-2 border-gray-300 rounded-md"
+              className="glass-input pl-10"
               placeholder="Rechercher un utilisateur..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -109,18 +109,18 @@ const AdminUsers = () => {
         
         {filteredUsers.length === 0 ? (
           <div className="p-6 text-center">
-            <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
-            <h3 className="mt-2 text-sm font-medium text-gray-900">Aucun utilisateur trouvé</h3>
-            <p className="mt-1 text-sm text-gray-500">
+            <h3 className="mt-2 text-sm font-medium text-white/80">Aucun utilisateur trouvé</h3>
+            <p className="mt-1 text-sm text-white/50">
               {searchTerm 
                 ? `Aucun résultat pour "${searchTerm}". Essayez avec d'autres termes.` 
                 : "Aucun utilisateur enregistré dans la base de données."}
             </p>
             {searchTerm && (
               <button
-                className="mt-4 text-sm text-blue-600 hover:text-blue-500"
+                className="mt-4 text-sm text-blue-400 hover:text-blue-300"
                 onClick={() => setSearchTerm('')}
               >
                 Effacer la recherche
@@ -129,29 +129,29 @@ const AdminUsers = () => {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-white/10">
+              <thead>
                 <tr>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
                     Utilisateur
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
                     Email
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
                     Rôle
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-white/60 uppercase tracking-wider">
                     Date d'inscription
                   </th>
-                  <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-white/60 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="divide-y divide-white/10">
                 {filteredUsers.map(user => (
-                  <tr key={user.id} className="hover:bg-gray-50">
+                  <tr key={user.id} className="hover:bg-white/5">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <div className="flex-shrink-0 h-10 w-10">
@@ -160,20 +160,20 @@ const AdminUsers = () => {
                           </div>
                         </div>
                         <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">{user.name || 'Utilisateur'}</div>
-                          <div className="text-xs text-gray-500">ID: {user.id.substring(0, 8)}...</div>
+                          <div className="text-sm font-medium text-white">{user.name || 'Utilisateur'}</div>
+                          <div className="text-xs text-white/50">ID: {user.id.substring(0, 8)}...</div>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{user.email}</div>
+                      <div className="text-sm text-white/80">{user.email}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="relative">
                         <select 
                           value={user.role || 'user'} 
                           onChange={(e) => handleRoleChange(user.id, e.target.value)}
-                          className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
+                          className="glass-input py-2"
                           disabled={loading}
                         >
                           <option value="user">Utilisateur</option>
@@ -182,7 +182,7 @@ const AdminUsers = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-500">
+                      <div className="text-sm text-white/50">
                         {user.createdAt?.toDate ? 
                           new Date(user.createdAt.toDate()).toLocaleDateString() : 
                           'N/A'
@@ -191,7 +191,7 @@ const AdminUsers = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <button
-                        className="text-blue-600 hover:text-blue-900 mr-3"
+                        className="text-blue-400 hover:text-blue-300 mr-3"
                         onClick={() => window.alert('Fonctionnalité à implémenter')}
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
@@ -200,7 +200,7 @@ const AdminUsers = () => {
                         </svg>
                       </button>
                       <button
-                        className="text-red-600 hover:text-red-900"
+                        className="text-red-400 hover:text-red-300"
                         onClick={() => window.alert('Fonctionnalité à implémenter')}
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">

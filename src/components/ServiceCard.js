@@ -6,17 +6,17 @@ import { calculateDiscountedMonthly } from '../pricing';
 const ServiceCard = ({ service }) => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
-  
+
   const handleSubscribe = () => {
     if (!currentUser) {
       navigate('/login', { state: { redirect: `/checkout/${service.id}` } });
       return;
     }
-    
+
     navigate(`/checkout/${service.id}`);
   };
-  
-  // Déterminer la couleur de fond en fonction du type de service
+
+  // Determiner la couleur de fond en fonction du type de service
   const getBgColor = () => {
     const category = service.category?.toLowerCase() || '';
     if (category.includes('streaming') || category.includes('svod')) return 'from-pink-600 to-red-600';
@@ -26,9 +26,9 @@ const ServiceCard = ({ service }) => {
     if (category.includes('productivité')) return 'from-purple-600 to-indigo-600';
     return 'from-blue-600 to-purple-600'; // Valeur par défaut
   };
-  
+
   return (
-    <div className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow">
+    <div className="glass-card-hover overflow-hidden">
       <div className={`bg-gradient-to-r ${getBgColor()} h-24 relative p-6`}>
         <h2 className="text-xl font-bold text-white">{service.name}</h2>
         <div className="absolute right-4 bottom-4 bg-white/20 backdrop-blur-sm text-white rounded-full px-3 py-1 text-sm font-medium">
@@ -36,16 +36,16 @@ const ServiceCard = ({ service }) => {
           <span className="font-bold">{calculateDiscountedMonthly(service.price).toFixed(2)} €/mois</span>
         </div>
       </div>
-      
+
       <div className="p-6">
-        <p className="text-gray-600 mb-4 line-clamp-2 h-12">{service.description}</p>
-        
+        <p className="text-white/70 mb-4 line-clamp-2 h-12">{service.description}</p>
+
         <div className="flex justify-between items-center">
-          <span className="text-sm text-gray-500">{service.duration} jours</span>
-          
+          <span className="text-sm text-white/50">{service.duration} jours</span>
+
           <button
             onClick={handleSubscribe}
-            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+            className="btn-primary text-sm py-2 px-4"
           >
             S'abonner
           </button>

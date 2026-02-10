@@ -10,12 +10,12 @@ const Login = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  
+
   const redirectPath = location.state?.redirect || '/dashboard';
 
   async function handleSubmit(e) {
     e.preventDefault();
-    
+
     try {
       setError('');
       setLoading(true);
@@ -29,19 +29,19 @@ const Login = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-900 to-blue-900 py-12 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
-      <div className="max-w-md w-full bg-white/10 backdrop-blur-md rounded-xl shadow-xl overflow-hidden">
-        <div className="bg-gradient-to-r from-blue-600 to-purple-600 py-6">
+    <div className="page-bg py-12 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
+      <div className="max-w-md w-full glass-card shadow-xl overflow-hidden">
+        <div className="section-header py-6">
           <h1 className="text-center text-2xl font-bold text-white">Connexion à Abona</h1>
         </div>
-        
+
         <div className="p-6 sm:p-8">
           {error && (
-            <div className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-lg relative mb-6">
+            <div className="glass-alert-error mb-6">
               <span className="block sm:inline">{error}</span>
             </div>
           )}
-          
+
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-white mb-2">
@@ -55,7 +55,7 @@ const Login = () => {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="appearance-none bg-white/5 border border-white/10 rounded-lg w-full py-3 px-4 text-white leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="glass-input"
                 placeholder="votre@email.com"
               />
             </div>
@@ -72,7 +72,7 @@ const Login = () => {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="appearance-none bg-white/5 border border-white/10 rounded-lg w-full py-3 px-4 text-white leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="glass-input"
                 placeholder="••••••••"
               />
             </div>
@@ -101,7 +101,7 @@ const Login = () => {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                className="btn-primary w-full"
               >
                 {loading ? (
                   <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -121,7 +121,7 @@ const Login = () => {
               </Link>
             </p>
           </div>
-          
+
           <div className="mt-6 border-t border-white/10 pt-6 text-center">
             <Link to="/" className="inline-flex items-center text-sm text-white/70 hover:text-white">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">

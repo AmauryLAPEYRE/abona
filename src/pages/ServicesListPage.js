@@ -12,11 +12,11 @@ const ServicesListPage = () => {
   const [error, setError] = useState(null);
   const [localServices, setLocalServices] = useState([]);
   const [localLoading, setLocalLoading] = useState(true);
-  
+
   // Extraire toutes les catégories uniques des services
   const allCategories = ['Tous'];
   const services = mainServices.length > 0 ? mainServices : localServices;
-  
+
   services.forEach(service => {
     if (service.category && !allCategories.includes(service.category)) {
       allCategories.push(service.category);
@@ -25,7 +25,7 @@ const ServicesListPage = () => {
 
   // Filtrer les services en fonction du terme de recherche et de la catégorie
   const filteredServices = services.filter(service => {
-    const matchesSearch = service.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    const matchesSearch = service.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          service.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === 'Tous' || service.category === selectedCategory;
     return matchesSearch && matchesCategory;
@@ -48,7 +48,7 @@ const ServicesListPage = () => {
         setLocalLoading(false);
         return;
       }
-      
+
       try {
         setLocalLoading(true);
         const servicesSnapshot = await firestore.collection('services').get();
@@ -64,7 +64,7 @@ const ServicesListPage = () => {
         setLocalLoading(false);
       }
     };
-    
+
     fetchServices();
   }, [mainServices]);
 
@@ -72,7 +72,7 @@ const ServicesListPage = () => {
     return (
       <div className="flex justify-center items-center h-screen bg-gradient-to-b from-gray-900 to-blue-900">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <div className="spinner mx-auto mb-4"></div>
           <p className="text-white">Chargement des services...</p>
         </div>
       </div>
@@ -85,9 +85,9 @@ const ServicesListPage = () => {
         <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-6 rounded-lg max-w-xl">
           <p className="font-bold text-xl mb-2">Erreur lors du chargement des services</p>
           <p className="mb-4">{error}</p>
-          <button 
-            onClick={() => window.location.reload()} 
-            className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors"
+          <button
+            onClick={() => window.location.reload()}
+            className="btn-primary text-sm py-2 px-4"
           >
             Réessayer
           </button>
@@ -101,15 +101,15 @@ const ServicesListPage = () => {
       {/* Hero Section */}
       <div className="container mx-auto px-4 pt-12 pb-16">
         <div className="text-center mb-12">
-          <h1 className="text-4xl md:text-5xl font-bold mb-4">Partagez vos abonnements, réduisez vos coûts</h1>
-          <p className="text-xl mb-8 max-w-3xl mx-auto">Accédez à vos services préférés à prix réduits grâce au partage d'abonnements sécurisé et simplifié.</p>
-          
+          <h1 className="text-4xl md:text-5xl font-bold mb-4">Vos services premium, au juste prix</h1>
+          <p className="text-xl mb-8 max-w-3xl mx-auto">Payez uniquement ce que vous consommez. Choisissez la durée qui vous convient.</p>
+
           {!currentUser && (
             <div className="flex flex-col sm:flex-row justify-center gap-4">
-              <Link to="/register" className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-colors">
+              <Link to="/register" className="btn-primary">
                 Commencer gratuitement
               </Link>
-              <Link to="/login" className="bg-transparent hover:bg-white/10 border border-white text-white font-bold py-3 px-6 rounded-lg transition-colors">
+              <Link to="/login" className="btn-secondary">
                 Se connecter
               </Link>
             </div>
@@ -122,7 +122,7 @@ const ServicesListPage = () => {
             <input
               type="text"
               placeholder="Rechercher un service..."
-              className="w-full bg-white/10 border border-white/20 rounded-full py-3 px-6 pl-12 text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="glass-input rounded-full pl-12"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -137,10 +137,10 @@ const ServicesListPage = () => {
           {allCategories.map(category => (
             <button
               key={category}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                selectedCategory === category 
-                  ? 'bg-blue-600 text-white' 
-                  : 'bg-white/10 hover:bg-white/20 text-white'
+              className={`category-pill ${
+                selectedCategory === category
+                  ? 'category-pill-active'
+                  : 'category-pill-inactive'
               }`}
               onClick={() => setSelectedCategory(category)}
             >
@@ -163,10 +163,10 @@ const ServicesListPage = () => {
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-bold">{category}</h2>
               </div>
-              
+
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {servicesByCategory[category].map(service => (
-                  <div key={service.id} className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl overflow-hidden hover:border-blue-500/50 transition-all duration-300 hover:shadow-lg hover:shadow-blue-500/10 group">
+                  <div key={service.id} className="glass-card-hover overflow-hidden group">
                     <div className="p-6">
                       <div className="flex justify-between items-start mb-4">
                         <div className="flex items-center">
@@ -180,16 +180,16 @@ const ServicesListPage = () => {
                           <h3 className="text-xl font-bold">{service.name}</h3>
                         </div>
                       </div>
-                      
+
                       <p className="text-white/80 mb-6 line-clamp-2">{service.description}</p>
-                      
+
                       <div className="flex justify-between items-center">
                         <div className="bg-blue-600/20 rounded-full px-4 py-1 text-blue-300 font-semibold">
                           à partir de {service.defaultPrice?.toFixed(2) || "??.??"} €
                         </div>
                         <Link
                           to={`/service/${service.id}`}
-                          className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors duration-300"
+                          className="btn-primary text-sm py-2 px-4"
                         >
                           Voir les options
                         </Link>
